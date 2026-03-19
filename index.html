@@ -1045,29 +1045,21 @@ const notionAPI = {
 
   clientProps(c) {
     const P = this.P;
-    // Propriétés alignées sur le schéma réel de la base "Sociétés CI"
-    const props = {
-      'Nom':               P.title(c.name||''),
-      'Secteur':           P.text(c.sector||''),
-      'Contact':           P.text(c.contact||''),
-      'Email':             P.email(c.email||''),
-      'Téléphone':         { phone_number: c.telephone||null },
-      'Type':              P.text(c.type||''),
-      'Type mission':      P.text(c.type_mission||''),
-      'Notes':             P.text(c.notes||''),
-      'Prochaine action':  P.text(c.prochaine_action||''),
-      'Probabilité %':     P.number(parseFloat(c.probabilite)||0),
-      'Montant estimé €':  P.number(parseFloat(c.montant)||0),
-    };
-    // Statut commercial — select, seulement si valeur valide
-    if(c.statut_commercial)
-      props['Statut commercial'] = P.select(c.statut_commercial);
-    // Statut — select différent de statut_commercial
-    if(c.statut)
-      props['Statut'] = P.select(c.statut);
-    // Date prochaine action — seulement si valeur présente
-    if(c.date_prochaine_action)
-      props['Date prochaine action'] = P.date(c.date_prochaine_action);
+    // Seul le titre est toujours envoyé — les autres champs uniquement si non-vides
+    const props = { 'Nom': P.title(c.name||'') };
+    if(c.sector)        props['Secteur']           = P.text(c.sector);
+    if(c.contact)       props['Contact']           = P.text(c.contact);
+    if(c.email && c.email.includes('@')) props['Email'] = P.email(c.email);
+    if(c.telephone)     props['Téléphone']        = { phone_number: c.telephone };
+    if(c.type)          props['Type']              = P.text(c.type);
+    if(c.type_mission)  props['Type mission']      = P.text(c.type_mission);
+    if(c.notes)         props['Notes']             = P.text(c.notes);
+    if(c.prochaine_action) props['Prochaine action'] = P.text(c.prochaine_action);
+    if(c.statut_commercial) props['Statut commercial'] = P.select(c.statut_commercial);
+    if(c.statut)        props['Statut']            = P.select(c.statut);
+    if(c.date_prochaine_action) props['Date prochaine action'] = P.date(c.date_prochaine_action);
+    if(parseFloat(c.probabilite)>0) props['Probabilité %'] = P.number(parseFloat(c.probabilite));
+    if(parseFloat(c.montant)>0)     props['Montant estimé €'] = P.number(parseFloat(c.montant));
     return props;
   },
 
@@ -1166,14 +1158,32 @@ const notionAPI = {
   },
 
   async syncClient(client) {
-    if (!client || !this.dbIds.societes) return null;
+    if (!client) { console.warn('[syncClient] client null'); return null; }
+    if (!this.dbIds.societes) { console.warn('[syncClient] dbIds.societes manquant'); return null; }
+    if (!this.proxyUrl) { console.warn('[syncClient] proxyUrl manquant'); return null; }
     const props = this.clientProps(client);
-    if (client.notionPageId) {
-      return this.updatePage(client.notionPageId, props);
-    } else {
-      const page = await this.createPage(this.dbIds.societes, props);
-      if (page) { STORE.clients[client.id].notionPageId = page.id; STORE._saveLocal(); }
-      return page;
+    console.log('[syncClient] envoi vers Notion:', client.name, '| props:', Object.keys(props).join(', '));
+    try {
+      if (client.notionPageId) {
+        const r = await this.updatePage(client.notionPageId, props);
+        if(r) console.log('[syncClient] MAJ OK:', client.name, r.id);
+        else console.warn('[syncClient] MAJ échouée. lastError:', this._lastError);
+        return r;
+      } else {
+        const page = await this.createPage(this.dbIds.societes, props);
+        if (page) {
+          STORE.clients[client.id].notionPageId = page.id; STORE._saveLocal();
+          console.log('[syncClient] Création OK:', client.name, page.id);
+          if(typeof toast==='function') toast('✓ ' + client.name + ' ajouté dans Notion');
+        } else {
+          console.error('[syncClient] Échec création. lastError:', JSON.stringify(this._lastError));
+          if(typeof toast==='function') toast('⚠ Échec sync ' + client.name + ' — voir console F12', 'warn');
+        }
+        return page;
+      }
+    } catch(e) {
+      console.error('[syncClient] exception:', e);
+      return null;
     }
   },
 
@@ -1677,13 +1687,17 @@ const STORE = {
   // ── CRUD Clients ─────────────────────────────────────────
   addClient(name,sector='',contact='',email=''){
     if(!name.trim()){toast('Nom requis','warn');return null;}
-    if(this.clients[name]){toast('Client existant','warn');return null;}
-    const id=name.trim();
-    this.clients[id]={id,name:id,sector,contact,email,type:'',avatar:id.charAt(0),notionPageId:null,notionData:null,_dossierIds:[]};
+    // Générer un ID UUID stable (pas le nom, pour éviter les problèmes avec les caractères spéciaux)
+    const id = (typeof crypto!=='undefined'&&crypto.randomUUID)
+      ? crypto.randomUUID()
+      : 'local-'+Date.now()+'-'+Math.random().toString(36).slice(2);
+    if(this.clients[id]){toast('Client existant','warn');return null;}
+    this.clients[id]={id,name:name.trim(),sector,contact,email,type:'',avatar:name.trim().charAt(0),notionPageId:null,notionData:null,_dossierIds:[]};
     DATA.clients[id]=[];
     this.emit('clients:change');
     this._saveLocal();
-    syncIndicator.run('Nouveau client',()=>notionAPI.syncClient(this.clients[id]));
+    // NE PAS syncer immédiatement — attendre que le modal ait appliqué tous les champs
+    // La sync se fera via le bouton ↺ Notion ou ⇄ Tout synchroniser
     return id;
   },
   removeClient(id){
@@ -2181,7 +2195,7 @@ function renderClientView(){
       </div>
       <div style="margin-left:auto;display:flex;gap:8px;">
         <button class="btn btn-blue btn-sm" onclick="ciNewDossier('${esc(c.id)}')">＋ Nouveau dossier</button>
-        ${STORE.token&&notionAPI.proxyUrl?`<button class="btn btn-ghost btn-sm" style="color:var(--green);border-color:rgba(0,255,156,.2);" onclick="ciSyncClient('${esc(c.id)}')" title="Synchroniser avec Notion">↺ Notion</button>`:''}
+        ${STORE.token&&notionAPI.proxyUrl?`<button class="btn btn-ghost btn-sm" style="color:var(--green);border-color:rgba(0,255,156,.2);" onclick="ciSyncAll('${esc(c.id)}')" title="Pousser tout vers Notion (client + dossiers + données)">↺ Notion</button>`:''}
         <button class="btn btn-ghost btn-sm" onclick="ciEditClient('${esc(c.id)}')" title="Modifier les informations">&#9998;</button>
         <button class="btn btn-danger btn-sm" onclick="ciDeleteClient('${esc(c.id)}')">&#128465;</button>
       </div>
@@ -3639,6 +3653,38 @@ function ciSyncClient(id){
   console.log('[ciSyncClient] dbId:',dbId,'proxy:',notionAPI.proxyUrl?.slice(0,30));
   toast('↺ Sync '+c.name+' en cours…');
   doSync();
+}
+
+// Pousse client + tous ses dossiers + toutes les lignes vers Notion
+async function ciSyncAll(id){
+  const c=STORE.clients[id];if(!c){toast('⚠ Client introuvable: '+id,'warn');return;}
+  if(!STORE.token){toast('⚠ Token Notion manquant — ↺ Données → Étape 1','warn');return;}
+  if(!notionAPI.proxyUrl){toast('⚠ Proxy manquant — ↺ Données → Étape 2','warn');return;}
+  if(!notionAPI.dbIds.societes){toast('⚠ ID base Sociétés CI manquant','warn');return;}
+  console.log('[ciSyncAll] Début sync:', c.name, '| notionPageId:', c.notionPageId, '| dbIds.societes:', notionAPI.dbIds.societes);
+  toast('↺ Synchronisation ' + c.name + ' en cours…');
+  let ok=0, err=0;
+  // 1. Sync client
+  const cp = await notionAPI.syncClient(c);
+  if(cp) ok++; else err++;
+  // 2. Sync dossiers
+  const dids = STORE.clientDossierIds(id);
+  for(const did of dids){
+    const d = STORE.dossiers[did]; if(!d) continue;
+    const dp = await notionAPI.syncDossier(d);
+    if(dp) ok++; else err++;
+    // 3. Sync lignes (personnel, affectations, etc.)
+    for(const field of ['personnel','affectations','amortissements','prestations','subventions']){
+      const rows = d[field]||[];
+      for(let i=0;i<rows.length;i++){
+        const rp = await notionAPI.syncRow(did,field,i);
+        if(rp) ok++; else err++;
+      }
+    }
+  }
+  const msg = '✓ Sync terminée — ' + ok + ' élément(s) envoyé(s)' + (err?' | ⚠ '+err+' échec(s) (voir console F12)':'');
+  toast(msg, err?'warn':'ok');
+  renderCIContent();
 }
 
 function ciEditClient(id){
