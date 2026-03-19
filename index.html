@@ -1065,7 +1065,9 @@ const notionAPI = {
 
   dossierProps(d, clientNotionId) {
     const P = this.P;
-    const titre = (d.clientId||'') + ' \u2014 ' + (d.dispositif||'') + ' ' + (d.annee||'');
+    // Utiliser le nom du client, pas l'ID (qui peut être un UUID)
+    const clientName = (typeof STORE!=='undefined'&&STORE.clients[d.clientId]?.name) || d.clientId || '';
+    const titre = clientName + ' \u2014 ' + (d.dispositif||'') + ' ' + (d.annee||'');
     const ci = (typeof STORE!=='undefined') ? STORE.calcCI(d) : {alerts:[],montantCI:0,ass:0};
     const alertesAuto=(ci.alerts||[]).map(a=>a.code);
     const alertesManu=[].concat(d.alertes_reglementaires||[]);
@@ -2679,11 +2681,7 @@ function renderPersTab(d){
   const periodeOpts = anneeIsPeriode
     ? [{v:'P1 — Jan→14 fév. (FF 43%)',l:'P1 — Jan → 14 fév.'},{v:'P2 — 15 fév.→Déc. (FF 40%)',l:'P2 — 15 fév. → Déc.'},{v:'Hors 2025',l:'Hors 2025'}]
     : [];
-  // Période EN PREMIER pour 2025 — permet d'adapter les blocs P1/P2 avant de saisir les montants
-  const periodeField = anneeIsPeriode ? [
-    {id:'periode2025',label:'★ Période 2025',type:'select',opts:periodeOpts,
-     onchange:`persOnPeriodeChange('${d.id}')`,w:'200px'},
-  ] : [];
+  const periodeField = [];
   const form=addFormHtml('pers',[
     ...periodeField,
     {id:'nom',label:'Nom',ph:'DUPONT Jean',w:'170px',dl:'pers-dl-noms',oninput:`persAutofill('${d.id}')`},
@@ -2694,14 +2692,39 @@ function renderPersTab(d){
     {id:'tps',label:'Jours annuels (base)',type:'number',ph:'218',w:'80px',title:'Jours travaillés annuels — sert au calcul du taux journalier'},
     {id:'diplomecat',label:'Catégorie',type:'select',opts:[{v:'A',l:'A — Thèse'},{v:'B',l:'B — Ingénieur'},{v:'C',l:'C — Technicien'}]},
   ]);
-  if(!rows.length){const noteR=`<div class="alert alert-info" style="margin:10px 14px 0;font-size:11px;"><span>⚖</span><span><strong style="color:var(--green)">Art. 244 quater B</strong> — Cotisations obligatoires uniquement (URSSAF, retraite légale). Les charges volontaires (intéressement, mutuelle sur-oblig…) sont non déductibles.</span></div>`;return `<div class="twrap" style="margin:14px 24px;"><div class="thead2"><span class="ttitle">Personnel R&D</span>${addBtn('Personnel',"document.getElementById('add-form-pers').style.display='flex'",'pers')}</div>${form}${noteR}${emptyState('Aucun personnel déclaré.')}</div>`;}
+  const formP1P2 = anneeIsPeriode ? `
+    <div style='display:flex;gap:10px;flex-wrap:wrap;margin-top:8px;'>
+      <div style='flex:1;min-width:240px;padding:10px 12px;background:rgba(24,0,255,.07);border:1px solid rgba(24,0,255,.25);border-radius:var(--r-sm);'>
+        <div style='font-size:9.5px;font-weight:800;text-transform:uppercase;letter-spacing:.12em;color:#8899FF;margin-bottom:4px;'>P1 — 1er jan. → 14 fév. (FF 43%)</div>
+        <div style='font-size:9px;color:rgba(136,153,255,.6);margin-bottom:5px;'>Montants de la période P1 uniquement — Taux = (Sal+Ch) ÷ Jours P1</div>
+        <div style='display:flex;gap:6px;flex-wrap:wrap;'>
+          <div><label>Sal. brut P1 €</label><input id='af-p1-sal' type='number' placeholder='ex: 8000' style='width:88px;background:var(--t08);border:1px solid rgba(24,0,255,.2);border-radius:4px;padding:4px 7px;font-family:var(--font);font-size:12px;color:#fff;' oninput='persP1P2Preview()'></div>
+          <div><label>Ch. oblig. P1 €</label><input id='af-p1-charges' type='number' placeholder='ex: 3500' style='width:88px;background:var(--t08);border:1px solid rgba(24,0,255,.2);border-radius:4px;padding:4px 7px;font-family:var(--font);font-size:12px;color:#fff;' oninput='persP1P2Preview()'></div>
+          <div><label>Jours trav. P1</label><input id='af-p1-tps' type='number' placeholder='ex: 30' style='width:65px;background:var(--t08);border:1px solid rgba(24,0,255,.2);border-radius:4px;padding:4px 7px;font-family:var(--font);font-size:12px;color:#fff;' oninput='persP1P2Preview()'></div>
+          <span id='af-p1-taux-preview' style='align-self:flex-end;padding-bottom:5px;font-size:10px;color:#8899FF;font-weight:700;'></span>
+        </div>
+      </div>
+      <div style='flex:1;min-width:240px;padding:10px 12px;background:rgba(0,255,156,.05);border:1px solid rgba(0,255,156,.2);border-radius:var(--r-sm);'>
+        <div style='font-size:9.5px;font-weight:800;text-transform:uppercase;letter-spacing:.12em;color:var(--green);margin-bottom:4px;'>P2 — 15 fév. → 31 déc. (FF 40%)</div>
+        <div style='font-size:9px;color:rgba(0,255,156,.5);margin-bottom:5px;'>Montants de la période P2 uniquement — Taux = (Sal+Ch) ÷ Jours P2</div>
+        <div style='display:flex;gap:6px;flex-wrap:wrap;'>
+          <div><label>Sal. brut P2 €</label><input id='af-p2-sal' type='number' placeholder='ex: 47000' style='width:88px;background:var(--t08);border:1px solid rgba(0,255,156,.2);border-radius:4px;padding:4px 7px;font-family:var(--font);font-size:12px;color:#fff;' oninput='persP1P2Preview()'></div>
+          <div><label>Ch. oblig. P2 €</label><input id='af-p2-charges' type='number' placeholder='ex: 21000' style='width:88px;background:var(--t08);border:1px solid rgba(0,255,156,.2);border-radius:4px;padding:4px 7px;font-family:var(--font);font-size:12px;color:#fff;' oninput='persP1P2Preview()'></div>
+          <div><label>Jours trav. P2</label><input id='af-p2-tps' type='number' placeholder='ex: 188' style='width:65px;background:var(--t08);border:1px solid rgba(0,255,156,.2);border-radius:4px;padding:4px 7px;font-family:var(--font);font-size:12px;color:#fff;' oninput='persP1P2Preview()'></div>
+          <span id='af-p2-taux-preview' style='align-self:flex-end;padding-bottom:5px;font-size:10px;color:var(--green);font-weight:700;'></span>
+        </div>
+      </div>
+    </div>
+    <div style='font-size:10px;color:var(--t40);margin-top:4px;'>Sal.P1 + Sal.P2 = Salaire annuel — Taux P1 = (Sal+Ch P1) ÷ Jours P1 — Taux P2 = (Sal+Ch P2) ÷ Jours P2</div>
+  ` : '';
+  if(!rows.length){const noteR=`<div class="alert alert-info" style="margin:10px 14px 0;font-size:11px;"><span>⚖</span><span><strong style="color:var(--green)">Art. 244 quater B</strong> — Cotisations obligatoires uniquement (URSSAF, retraite légale). Les charges volontaires (intéressement, mutuelle sur-oblig…) sont non déductibles.</span></div>`;return `<div class="twrap" style="margin:14px 24px;"><div class="thead2"><span class="ttitle">Personnel R&D</span>${addBtn('Personnel',"document.getElementById('add-form-pers').style.display='flex'",'pers')}</div>${form}${formP1P2}${noteR}${emptyState('Aucun personnel déclaré.')}</div>`;}
   const noteReglementaire=`<div class="alert alert-info" style="margin:10px 14px 0;font-size:11px;">
     <span>⚖</span>
     <span><strong style="color:var(--green)">Art. 244 quater B, II-a CGI</strong> — Les charges patronales éligibles sont exclusivement les <strong>cotisations sociales obligatoires</strong> (URSSAF, retraite légale, prévoyance légale). Les charges volontaires (intéressement, participation, tickets restaurant, mutuelle sur-obligatoire, PEE…) sont <strong style="color:var(--pink)">non déductibles</strong> et doivent être isolées dans la colonne Ch. vol.</span>
   </div>`;
   return `<div class="twrap" style="margin:14px 24px;">
     <div class="thead2"><span class="ttitle">Personnel R&D</span><div style="display:flex;gap:8px;align-items:center;"><span class="tcount">${rows.length}</span>${addBtn('Personnel',"document.getElementById('add-form-pers').style.display='flex'",'pers')}</div></div>
-    ${form}
+    ${form}${formP1P2}
     ${noteReglementaire}
     <div class="t-scroll"><table>${`<thead><tr><th class='th-act'></th>${['Nom','Catégorie','Contrat','Salaire brut €','Ch. patronales oblig. €','Ch. vol. €','Coût éligible total','Tps trav. (j)'].map(c=>`<th>${c}</th>`).join('')}</tr></thead>`}
     <tbody>${rows.map((r,i)=>`<tr>
@@ -3215,15 +3238,35 @@ function subv_update(did,idx){
 }
 function pers_add(did){
   const nom=document.getElementById('af-nom')?.value.trim();if(!nom){toast('Nom requis','warn');return;}
-  STORE.addRow(did,'personnel',{
-    nom,diplome:document.getElementById('af-diplome')?.value||'',
+  const d=STORE.dossiers[did];if(!d)return;
+  const sal=parseFloat(document.getElementById('af-sal')?.value)||0;
+  const ch=parseFloat(document.getElementById('af-charges')?.value)||0;
+  const chv=parseFloat(document.getElementById('af-charges_vol')?.value)||0;
+  const jA=parseFloat(document.getElementById('af-tps')?.value)||218;
+  const base={nom,diplome:document.getElementById('af-diplome')?.value||'',
     contrat:document.getElementById('af-contrat')?.value||'CDI',
-    categorie:document.getElementById('af-diplomecat')?.value||'A',
-    salaire_brut:parseFloat(document.getElementById('af-sal')?.value)||0,
-    charges_sociales:parseFloat(document.getElementById('af-charges')?.value)||0,
-    charges_vol:parseFloat(document.getElementById('af-charges_vol')?.value)||0,
-    tps_travailles:parseFloat(document.getElementById('af-tps')?.value)||0,
-  });
+    categorie:document.getElementById('af-diplomecat')?.value||'A',charges_vol:chv};
+  if(d.annee===2025&&d.dispositif==='CIR'){
+    const s1=parseFloat(document.getElementById('af-p1-sal')?.value)||0;
+    const c1=parseFloat(document.getElementById('af-p1-charges')?.value)||0;
+    const j1=parseFloat(document.getElementById('af-p1-tps')?.value)||0;
+    const s2=parseFloat(document.getElementById('af-p2-sal')?.value)||0;
+    const c2=parseFloat(document.getElementById('af-p2-charges')?.value)||0;
+    const j2=parseFloat(document.getElementById('af-p2-tps')?.value)||0;
+    if(!s1||!j1||!s2||!j2){toast('⚠ Renseignez salaire + jours pour P1 ET P2','warn');return;}
+    // Taux P1 = (Sal P1 + Ch P1) / Jours P1 -- montants et jours de la periode
+    const taux1=j1>0?Math.round((s1+c1)/j1*100)/100:0;
+    // Taux P2 = (Sal P2 + Ch P2) / Jours P2
+    const taux2=j2>0?Math.round((s2+c2)/j2*100)/100:0;
+    STORE.addRow(did,'personnel',{...base,salaire_brut:s1,charges_sociales:c1,tps_travailles:j1,
+      taux_journalier:taux1,periode_2025:'P1 — Jan→14 fév. (FF 43%)'});
+    STORE.addRow(did,'personnel',{...base,salaire_brut:s2,charges_sociales:c2,tps_travailles:j2,
+      taux_journalier:taux2,periode_2025:'P2 — 15 fév.→Déc. (FF 40%)'});
+    toast('P1 ('+taux1+'€/j) + P2 ('+taux2+'€/j) créés ✓');
+  } else {
+    STORE.addRow(did,'personnel',{...base,salaire_brut:sal,charges_sociales:ch,
+      tps_travailles:jA,taux_journalier:jA>0?Math.round((sal+ch)/jA*100)/100:0});
+  }
   // Validation : jours P1+P2 ne doivent pas dépasser les jours annuels
   const jAnnuels = parseFloat(document.getElementById('af-tps')?.value)||218;
   const d2 = STORE.dossiers[did];
@@ -3314,6 +3357,32 @@ function affAutofillTaux(did){
   // Masquer le mini-formulaire si personne trouvée
   const mf2=document.getElementById('aff-taux-miniform');
   if(mf2)mf2.style.display='none';
+  // Pour CIR 2025 : remplir taux P1 et P2 depuis les lignes personnel correspondantes
+  const dForAff=STORE.dossiers[did];
+  if(dForAff&&dForAff.annee===2025&&dForAff.dispositif==='CIR'){
+    const sg2=getClientSuggestions(dForAff.clientId);
+    const allP=sg2.personnel.filter(p=>p.nom===nom);
+    const persP1=allP.find(p=>(p.periode_2025||'').startsWith('P1'));
+    const persP2=allP.find(p=>(p.periode_2025||'').startsWith('P2'));
+    if(persP1&&persP1.taux_journalier){
+      const el=document.getElementById('af-taux');
+      if(el) el.value=persP1.taux_journalier;
+      const src=document.getElementById('af-taux-src');
+      if(src) src.textContent='↑P1';
+      affCalcDep(did);
+    }
+    const selPer=document.getElementById('af-aff-periode2025');
+    if(selPer&&!selPer.value) selPer.value='P1 — Jan→14 fév. (FF 43%)';
+    const wrap=document.getElementById('aff-auto-p2-wrap');
+    if(wrap) wrap.style.display='block';
+    if(persP2&&persP2.taux_journalier){
+      const tauxP2El=document.getElementById('af-aff-p2-taux');
+      if(tauxP2El) tauxP2El.value=persP2.taux_journalier;
+    }
+    const projP1=document.getElementById('af-proj')?.value||'';
+    const projP2=document.getElementById('af-aff-p2-proj');
+    if(projP2&&!projP2.value&&projP1) projP2.value=projP1;
+  }
 
   const jours=pers.tps_travailles||218;
   const base=(pers.salaire_brut||0)+(pers.charges_sociales||0);
@@ -3323,6 +3392,19 @@ function affAutofillTaux(did){
   const src=document.getElementById('af-taux-src');
   if(src)src.textContent=fromCurrent.length?'↑ pers':'↑ hist.';
   affCalcDep(did);
+}
+
+function persP1P2Preview(){
+  const s1=parseFloat(document.getElementById('af-p1-sal')?.value)||0;
+  const c1=parseFloat(document.getElementById('af-p1-charges')?.value)||0;
+  const j1=parseFloat(document.getElementById('af-p1-tps')?.value)||0;
+  const s2=parseFloat(document.getElementById('af-p2-sal')?.value)||0;
+  const c2=parseFloat(document.getElementById('af-p2-charges')?.value)||0;
+  const j2=parseFloat(document.getElementById('af-p2-tps')?.value)||0;
+  const p1=document.getElementById('af-p1-taux-preview');
+  const p2=document.getElementById('af-p2-taux-preview');
+  if(p1) p1.textContent=j1>0?'≈ '+Math.round((s1+c1)/j1)+' €/j':'';
+  if(p2) p2.textContent=j2>0?'≈ '+Math.round((s2+c2)/j2)+' €/j':'';
 }
 
 function affMfCalc(){
