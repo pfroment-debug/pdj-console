@@ -2336,12 +2336,12 @@ function renderCalcPanel(d,ci){
   const alerts=ci.alerts||[];
   const alertsHTML=alerts.map(a=>`<div class="alert alert-${a.level==='err'?'err':a.level==='warn'?'warn':'info'}"><span>${a.level==='err'?'✗':a.level==='warn'?'⚠':'ℹ'}</span><span style="flex:1;">${esc(a.msg)}</span></div>`).join('');
   return `<div class="calc-title">⬡ Calcul CI — ${d.dispositif} ${d.annee}</div>
-    <div class="calc-row" style="cursor:help;" title="Σ dépenses valorisables des affectations. Inclure salaire brut + charges patronales obligatoires dans le calcul des dépenses.">
-      <span class="calc-lbl">Personnel (tp) <span style="font-size:9px;opacity:.5;">salaires + ch.oblig.</span></span>
+    <div class="calc-row" style="cursor:help;" title="Σ dépenses valorisables des affectations.">
+      <span class="calc-lbl">Personnel (tp)${d.annee===2025&&d.dispositif==='CIR'&&ci.periodes2025?` <span style='font-size:9px;opacity:.5;'>`+`P1:${EUR(ci.periodes2025.p1.tp)} P2:${EUR(ci.periodes2025.p2.tp)}</span>`:' <span style="font-size:9px;opacity:.5;">salaires + ch.oblig.</span>'}</span>
       <span class="calc-v">${EUR(ci.tp)}</span>
     </div>
     <div class="calc-row"><span class="calc-lbl">Amortissements (ta)</span><span class="calc-v">${EUR(ci.ta)}</span></div>
-    <div class="calc-row"><span class="calc-lbl">Forfait 43%${d.dispositif==='CII'&&d.annee>=2023?' (supprimé)':''}</span><span class="calc-v">${EUR(ci.ff)}</span></div>
+    <div class="calc-row" title="CIR 2025 : 43% des dépenses P1 + 40% des dépenses P2"><span class="calc-lbl">Frais de fonctionnement${d.dispositif==='CII'&&d.annee>=2023?' (supprimé)':''}${d.annee===2025&&d.dispositif==='CIR'?` <span style="font-size:9px;opacity:.6;">(P1×43% + P2×40%)</span>`:''}</span><span class="calc-v">${EUR(ci.ff)}</span></div>    ${d.annee===2025&&d.dispositif==='CIR'&&ci.periodes2025?`<div style='margin-left:14px;margin-top:-4px;margin-bottom:4px;display:flex;flex-direction:column;gap:2px;'>  <div class='calc-row' style='font-size:10px;opacity:.7;'>    <span class='calc-lbl' style='color:#8899FF;'>P1   ${EUR(ci.periodes2025.p1.tp)} × 43%</span>    <span class='calc-v' style='color:#8899FF;'>${EUR(ci.periodes2025.p1.ff)}</span>  </div>  <div class='calc-row' style='font-size:10px;opacity:.7;'>    <span class='calc-lbl' style='color:var(--green);'>P2   ${EUR(ci.periodes2025.p2.tp)} × 40%</span>    <span class='calc-v' style='color:var(--green);'>${EUR(ci.periodes2025.p2.ff)}</span>  </div></div>`:''}
     <div class="calc-row" style="font-weight:800;"><span class="calc-lbl">Base interne</span><span class="calc-v">${EUR(ci.inn)}</span></div>
     <div style="border-top:1px solid var(--border);padding-top:8px;margin-top:4px;">
       <div class="calc-row"><span class="calc-lbl">Prestations (pc)</span><span class="calc-v">${EUR(ci.tpr)} → ${EUR(ci.pc)}</span></div>
@@ -2677,11 +2677,11 @@ function addFormHtml(id,fields){
 function renderPersTab(d){
   const rows=d.personnel||[];
   const sg=buildDatalistsForClient(d.clientId,'pers');
-  const anneeIsPeriode = (d.annee===2025);
-  const periodeOpts = anneeIsPeriode
-    ? [{v:'P1 — Jan→14 fév. (FF 43%)',l:'P1 — Jan → 14 fév.'},{v:'P2 — 15 fév.→Déc. (FF 40%)',l:'P2 — 15 fév. → Déc.'},{v:'Hors 2025',l:'Hors 2025'}]
-    : [];
+  const isCIR2025 = (d.annee===2025 && d.dispositif==='CIR');
+  const anneeIsPeriode = isCIR2025;
+  const periodeOpts = [];
   const periodeField = [];
+  // Formulaire standard (non-CIR 2025)
   const form=addFormHtml('pers',[
     ...periodeField,
     {id:'nom',label:'Nom',ph:'DUPONT Jean',w:'170px',dl:'pers-dl-noms',oninput:`persAutofill('${d.id}')`},
@@ -2689,9 +2689,67 @@ function renderPersTab(d){
     {id:'contrat',label:'Contrat',type:'select',opts:[{v:'CDI - Tps plein',l:'CDI'},{v:'CDD',l:'CDD'},{v:'Mise à Disposition',l:'Mise à dispo.'},{v:'Apprentissage',l:'Apprentissage'},{v:'Allocation de gérance',l:'Allocation de gérance'}]},
     {id:'sal',label:'Salaire brut €',type:'number',ph:'45000',w:'90px'},{id:'charges',label:'Ch. patronales oblig. €',type:'number',ph:'22000',w:'115px'},
     {id:'charges_vol',label:'Ch. vol. (non déd.) €',type:'number',ph:'0',w:'115px'},
-    {id:'tps',label:'Jours annuels (base)',type:'number',ph:'218',w:'80px',title:'Jours travaillés annuels — sert au calcul du taux journalier'},
+    {id:'tps',label:'Jours travaillés',type:'number',ph:'218',w:'80px'},
     {id:'diplomecat',label:'Catégorie',type:'select',opts:[{v:'A',l:'A — Thèse'},{v:'B',l:'B — Ingénieur'},{v:'C',l:'C — Technicien'}]},
   ]);
+  // Formulaire CIR 2025 : tableau P1/P2 compact
+  const formCIR2025 = isCIR2025 ? `
+  <div id='pers-form-2025' style='padding:12px 0;'>
+    <div style='display:grid;grid-template-columns:1fr 1fr;gap:8px;margin-bottom:10px;'>
+      <div><label>Nom du salarié</label>
+        <input id='af-p-nom' class='minput' list='pers-dl-noms' placeholder='DUPONT Jean' style='width:100%;' oninput='persCIR2025Autofill("${d.id}")'></div>
+      <div><label>Diplôme</label>
+        <input id='af-p-diplome' class='minput' placeholder='Thèse / Master / BTS' style='width:100%;'></div>
+      <div><label>Contrat</label>
+        <select id='af-p-contrat' class='minput' style='width:100%;'>
+          <option value='CDI - Tps plein'>CDI</option><option value='CDD'>CDD</option>
+          <option value='Mise à Disposition'>Mise à dispo.</option>
+          <option value='Apprentissage'>Apprentissage</option>
+          <option value='Allocation de gérance'>Allocation de gérance</option>
+        </select></div>
+      <div><label>Catégorie</label>
+        <select id='af-p-cat' class='minput' style='width:100%;'>
+          <option value='A'>A — Doctorat</option><option value='B'>B — Ingénieur/Master</option><option value='C'>C — Technicien</option>
+        </select></div>
+      <div style='grid-column:1/-1;'><label>Charges vol. (non déd.) €</label>
+        <input id='af-p-chvol' class='minput' type='number' placeholder='0' style='width:120px;'></div>
+    </div>
+    <table style='width:100%;border-collapse:collapse;font-size:12px;'>
+      <thead><tr>
+        <th style='text-align:left;padding:5px 8px;font-size:9px;font-weight:800;text-transform:uppercase;letter-spacing:.1em;color:var(--t40);border-bottom:1px solid var(--border);'>Montants</th>
+        <th style='padding:5px 10px;font-size:9px;font-weight:800;text-transform:uppercase;letter-spacing:.1em;color:#8899FF;border-bottom:1px solid var(--border);background:rgba(24,0,255,.05);border-radius:4px 0 0 0;'>P1 — 1er jan. → 14 fév.<br><span style='color:rgba(136,153,255,.5);font-weight:600;text-transform:none;letter-spacing:0;'>Frais fonct. 43%</span></th>
+        <th style='padding:5px 10px;font-size:9px;font-weight:800;text-transform:uppercase;letter-spacing:.1em;color:var(--green);border-bottom:1px solid var(--border);background:rgba(0,255,156,.04);border-radius:0 4px 0 0;'>P2 — 15 fév. → 31 déc.<br><span style='color:rgba(0,255,156,.4);font-weight:600;text-transform:none;letter-spacing:0;'>Frais fonct. 40%</span></th>
+      </tr></thead>
+      <tbody>
+        <tr style='border-bottom:1px solid var(--border);'>
+          <td style='padding:6px 8px;color:var(--t60);'>Salaire brut €</td>
+          <td style='padding:4px 6px;background:rgba(24,0,255,.03);'><input id='af-p1-sal' class='minput' type='number' placeholder='ex: 8 540' style='width:100%;' oninput='persP1P2Preview()'></td>
+          <td style='padding:4px 6px;background:rgba(0,255,156,.02);'><input id='af-p2-sal' class='minput' type='number' placeholder='ex: 46 460' style='width:100%;' oninput='persP1P2Preview()'></td>
+        </tr>
+        <tr style='border-bottom:1px solid var(--border);'>
+          <td style='padding:6px 8px;color:var(--t60);'>Charges patronales oblig. €</td>
+          <td style='padding:4px 6px;background:rgba(24,0,255,.03);'><input id='af-p1-charges' class='minput' type='number' placeholder='ex: 3 800' style='width:100%;' oninput='persP1P2Preview()'></td>
+          <td style='padding:4px 6px;background:rgba(0,255,156,.02);'><input id='af-p2-charges' class='minput' type='number' placeholder='ex: 20 700' style='width:100%;' oninput='persP1P2Preview()'></td>
+        </tr>
+        <tr style='border-bottom:1px solid var(--border);'>
+          <td style='padding:6px 8px;color:var(--t60);'>Jours travaillés sur la période</td>
+          <td style='padding:4px 6px;background:rgba(24,0,255,.03);'><input id='af-p1-tps' class='minput' type='number' placeholder='ex: 32' style='width:100%;' oninput='persP1P2Preview()'></td>
+          <td style='padding:4px 6px;background:rgba(0,255,156,.02);'><input id='af-p2-tps' class='minput' type='number' placeholder='ex: 186' style='width:100%;' oninput='persP1P2Preview()'></td>
+        </tr>
+        <tr>
+          <td style='padding:6px 8px;color:var(--t40);font-size:11px;'>Taux journalier calculé</td>
+          <td style='padding:6px 10px;background:rgba(24,0,255,.05);font-weight:800;color:#8899FF;' id='af-p1-taux-preview'>—</td>
+          <td style='padding:6px 10px;background:rgba(0,255,156,.05);font-weight:800;color:var(--green);' id='af-p2-taux-preview'>—</td>
+        </tr>
+      </tbody>
+    </table>
+    <div style='font-size:10px;color:var(--t40);margin-top:6px;'>
+      Sal.P1 + Sal.P2 = Salaire annuel — Taux = (Sal + Ch. oblig.) ÷ Jours de la période — Crée 2 lignes�: <strong style='color:#8899FF;'>NOM — P1</strong> + <strong style='color:var(--green);'>NOM — P2</strong>
+    </div>
+    <div style='display:flex;gap:8px;margin-top:10px;'>
+      <button id='btn-add-pers-2025' class='btn btn-green btn-sm' style='flex:1;' onclick='pers_add_2025("${d.id}")'>Créer NOM—P1 + NOM—P2</button>
+    </div>
+  </div>` : '';
   const formP1P2 = anneeIsPeriode ? `
     <div style='display:flex;gap:10px;flex-wrap:wrap;margin-top:8px;'>
       <div style='flex:1;min-width:240px;padding:10px 12px;background:rgba(24,0,255,.07);border:1px solid rgba(24,0,255,.25);border-radius:var(--r-sm);'>
@@ -2717,28 +2775,28 @@ function renderPersTab(d){
     </div>
     <div style='font-size:10px;color:var(--t40);margin-top:4px;'>Sal.P1 + Sal.P2 = Salaire annuel — Taux P1 = (Sal+Ch P1) ÷ Jours P1 — Taux P2 = (Sal+Ch P2) ÷ Jours P2</div>
   ` : '';
-  if(!rows.length){const noteR=`<div class="alert alert-info" style="margin:10px 14px 0;font-size:11px;"><span>⚖</span><span><strong style="color:var(--green)">Art. 244 quater B</strong> — Cotisations obligatoires uniquement (URSSAF, retraite légale). Les charges volontaires (intéressement, mutuelle sur-oblig…) sont non déductibles.</span></div>`;return `<div class="twrap" style="margin:14px 24px;"><div class="thead2"><span class="ttitle">Personnel R&D</span>${addBtn('Personnel',"document.getElementById('add-form-pers').style.display='flex'",'pers')}</div>${form}${formP1P2}${noteR}${emptyState('Aucun personnel déclaré.')}</div>`;}
+  if(!rows.length){const noteR=`<div class="alert alert-info" style="margin:10px 14px 0;font-size:11px;"><span>⚖</span><span><strong style="color:var(--green)">Art. 244 quater B</strong> — Cotisations obligatoires uniquement (URSSAF, retraite légale). Les charges volontaires (intéressement, mutuelle sur-oblig…) sont non déductibles.</span></div>`;return `<div class="twrap" style="margin:14px 24px;"><div class="thead2"><span class="ttitle">Personnel R&D</span>${addBtn('Personnel',"document.getElementById('add-form-pers').style.display='flex'",'pers')}</div>${isCIR2025?formCIR2025:form}${noteR}${emptyState('Aucun personnel déclaré.')}</div>`;}
   const noteReglementaire=`<div class="alert alert-info" style="margin:10px 14px 0;font-size:11px;">
     <span>⚖</span>
     <span><strong style="color:var(--green)">Art. 244 quater B, II-a CGI</strong> — Les charges patronales éligibles sont exclusivement les <strong>cotisations sociales obligatoires</strong> (URSSAF, retraite légale, prévoyance légale). Les charges volontaires (intéressement, participation, tickets restaurant, mutuelle sur-obligatoire, PEE…) sont <strong style="color:var(--pink)">non déductibles</strong> et doivent être isolées dans la colonne Ch. vol.</span>
   </div>`;
   return `<div class="twrap" style="margin:14px 24px;">
     <div class="thead2"><span class="ttitle">Personnel R&D</span><div style="display:flex;gap:8px;align-items:center;"><span class="tcount">${rows.length}</span>${addBtn('Personnel',"document.getElementById('add-form-pers').style.display='flex'",'pers')}</div></div>
-    ${form}${formP1P2}
+    ${isCIR2025?formCIR2025:form}
     ${noteReglementaire}
-    <div class="t-scroll"><table>${`<thead><tr><th class='th-act'></th>${['Nom','Catégorie','Contrat','Salaire brut €','Ch. patronales oblig. €','Ch. vol. €','Coût éligible total','Tps trav. (j)'].map(c=>`<th>${c}</th>`).join('')}</tr></thead>`}
+    <div class="t-scroll"><table>${`<thead><tr><th class='th-act'></th>${(isCIR2025?['Nom','Période','Catégorie','Contrat','Salaire brut €','Ch. oblig. €','Taux €/j','Jours']:['Nom','Catégorie','Contrat','Salaire brut €','Ch. patronales oblig. €','Ch. vol. €','Coût éligible total','Tps trav. (j)']).map(c=>`<th>${c}</th>`).join('')}</tr></thead>`}
     <tbody>${rows.map((r,i)=>`<tr>
       <td class="td-act"><div style="display:flex;gap:3px;">
         <div class="btn-icon" title="Modifier" onclick="editRow('${esc(d.id)}','personnel',${i})">✏</div>
         <div class="btn-icon del" title="Supprimer" onclick="if(confirm('Supprimer ?')){STORE.removeRow('${esc(d.id)}','personnel',${i});renderDossierView(document.getElementById('ci-content'))}">🗑</div>
       </div></td>
       <td><span class="editable" contenteditable onblur="ciUpdateRow('${esc(d.id)}','personnel',${i},'nom',this.textContent)">${esc(r.nom||'')}</span></td>
+      ${isCIR2025?`<td>${(r.periode_2025||'').startsWith('P1')?`<span class='chip' style='background:rgba(24,0,255,.15);color:#8899FF;'>P1</span>`:(r.periode_2025||'').startsWith('P2')?`<span class='chip' style='background:rgba(0,255,156,.1);color:var(--green);'>P2</span>`:'<span class="chip chip-muted">?</span>'}</td>`:''}
       <td><span class="chip chip-${(r.categorie||'A')==='A'?'ok':(r.categorie||'A')==='B'?'blue':'muted'}">${r.categorie||'A'}</span></td>
       <td style="font-size:11px;color:var(--t60);">${esc(r.contrat||'CDI')}</td>
       <td class="td-mono"><span class="editable" contenteditable onblur="ciUpdateRow('${esc(d.id)}','personnel',${i},'salaire_brut',this.textContent)">${r.salaire_brut||0}</span></td>
       <td class="td-mono"><span class="editable" contenteditable onblur="ciUpdateRow('${esc(d.id)}','personnel',${i},'charges_sociales',this.textContent)">${r.charges_sociales||0}</span></td>
-      <td class="td-mono" style="color:var(--t40);"><span class="editable" contenteditable onblur="ciUpdateRow('${esc(d.id)}','personnel',${i},'charges_vol',this.textContent)">${r.charges_vol||0}</span></td>
-      <td class="td-mono td-g" style="font-weight:800;">${EUR((r.salaire_brut||0)+(r.charges_sociales||0))}</td>
+      ${isCIR2025?`<td class='td-mono td-g' style='font-weight:800;color:#8899FF;'>${r.taux_journalier?r.taux_journalier+' €/j':'<span style="color:var(--t40)">—</span>'}</td>`:`<td class='td-mono' style='color:var(--t40);'>${r.charges_vol||0}</td><td class='td-mono td-g' style='font-weight:800;'>${EUR((r.salaire_brut||0)+(r.charges_sociales||0))}</td>`}
       <td class="td-mono"><span class="editable" contenteditable onblur="ciUpdateRow('${esc(d.id)}','personnel',${i},'tps_travailles',this.textContent)">${r.tps_travailles||0}</span></td>
       </tr>`).join('')}</tbody></table></div></div>`;
 }
@@ -3236,6 +3294,7 @@ function subv_update(did,idx){
   document.getElementById('add-form-subv').style.display='none';
   renderDossierView(document.getElementById('ci-content'));toast('Subvention mise à jour ✓');
 }
+// Formulaire personnel standard (hors CIR 2025)
 function pers_add(did){
   const nom=document.getElementById('af-nom')?.value.trim();if(!nom){toast('Nom requis','warn');return;}
   const d=STORE.dossiers[did];if(!d)return;
@@ -3243,30 +3302,13 @@ function pers_add(did){
   const ch=parseFloat(document.getElementById('af-charges')?.value)||0;
   const chv=parseFloat(document.getElementById('af-charges_vol')?.value)||0;
   const jA=parseFloat(document.getElementById('af-tps')?.value)||218;
-  const base={nom,diplome:document.getElementById('af-diplome')?.value||'',
+  STORE.addRow(did,'personnel',{
+    nom,diplome:document.getElementById('af-diplome')?.value||'',
     contrat:document.getElementById('af-contrat')?.value||'CDI',
-    categorie:document.getElementById('af-diplomecat')?.value||'A',charges_vol:chv};
-  if(d.annee===2025&&d.dispositif==='CIR'){
-    const s1=parseFloat(document.getElementById('af-p1-sal')?.value)||0;
-    const c1=parseFloat(document.getElementById('af-p1-charges')?.value)||0;
-    const j1=parseFloat(document.getElementById('af-p1-tps')?.value)||0;
-    const s2=parseFloat(document.getElementById('af-p2-sal')?.value)||0;
-    const c2=parseFloat(document.getElementById('af-p2-charges')?.value)||0;
-    const j2=parseFloat(document.getElementById('af-p2-tps')?.value)||0;
-    if(!s1||!j1||!s2||!j2){toast('⚠ Renseignez salaire + jours pour P1 ET P2','warn');return;}
-    // Taux P1 = (Sal P1 + Ch P1) / Jours P1 -- montants et jours de la periode
-    const taux1=j1>0?Math.round((s1+c1)/j1*100)/100:0;
-    // Taux P2 = (Sal P2 + Ch P2) / Jours P2
-    const taux2=j2>0?Math.round((s2+c2)/j2*100)/100:0;
-    STORE.addRow(did,'personnel',{...base,salaire_brut:s1,charges_sociales:c1,tps_travailles:j1,
-      taux_journalier:taux1,periode_2025:'P1 — Jan→14 fév. (FF 43%)'});
-    STORE.addRow(did,'personnel',{...base,salaire_brut:s2,charges_sociales:c2,tps_travailles:j2,
-      taux_journalier:taux2,periode_2025:'P2 — 15 fév.→Déc. (FF 40%)'});
-    toast('P1 ('+taux1+'€/j) + P2 ('+taux2+'€/j) créés ✓');
-  } else {
-    STORE.addRow(did,'personnel',{...base,salaire_brut:sal,charges_sociales:ch,
-      tps_travailles:jA,taux_journalier:jA>0?Math.round((sal+ch)/jA*100)/100:0});
-  }
+    categorie:document.getElementById('af-diplomecat')?.value||'A',
+    charges_vol:chv,salaire_brut:sal,charges_sociales:ch,
+    tps_travailles:jA,taux_journalier:jA>0?Math.round((sal+ch)/jA*100)/100:0
+  });
   // Validation : jours P1+P2 ne doivent pas dépasser les jours annuels
   const jAnnuels = parseFloat(document.getElementById('af-tps')?.value)||218;
   const d2 = STORE.dossiers[did];
@@ -3288,6 +3330,14 @@ function aff_add(did){
   const tpsVal=parseFloat(document.getElementById('af-tps-val')?.value)||tpsProj;
   const depEng=Math.round(taux*tpsProj*100)/100;
   const depVal=Math.round(taux*tpsVal*100)/100;
+  // Période 2025 : le suffixe du nom est prioritaire sur le select
+  let periode2025='';
+  if(nom.includes('— P1')||nom.endsWith('-P1'))
+    periode2025='P1 — Jan→14 fév. (FF 43%)';
+  else if(nom.includes('— P2')||nom.endsWith('-P2'))
+    periode2025='P2 — 15 fév.→Déc. (FF 40%)';
+  else
+    periode2025=document.getElementById('af-aff-periode2025')?.value||'';
   STORE.addRow(did,'affectations',{
     nom,
     projet:document.getElementById('af-proj')?.value||'',
@@ -3296,6 +3346,7 @@ function aff_add(did){
     tps_eligibles:tpsVal,
     depenses_engagees:depEng,
     depenses_valorisables:depVal,
+    periode_2025:periode2025,
   });
   renderDossierView(document.getElementById('ci-content'));toast('Affectation ajoutée ✓');
 }
@@ -3357,7 +3408,7 @@ function affAutofillTaux(did){
   // Masquer le mini-formulaire si personne trouvée
   const mf2=document.getElementById('aff-taux-miniform');
   if(mf2)mf2.style.display='none';
-  // Pour CIR 2025 : remplir taux P1 et P2 depuis les lignes personnel correspondantes
+  // CIR 2025 : le nom contient deja le suffixe P1 ou P2, on cherche directement
   const dForAff=STORE.dossiers[did];
   if(dForAff&&dForAff.annee===2025&&dForAff.dispositif==='CIR'){
     const sg2=getClientSuggestions(dForAff.clientId);
@@ -3371,11 +3422,21 @@ function affAutofillTaux(did){
       if(src) src.textContent='↑P1';
       affCalcDep(did);
     }
+    // Forcer la période depuis le suffixe du nom sélectionné (P1 ou P2)
     const selPer=document.getElementById('af-aff-periode2025');
-    if(selPer&&!selPer.value) selPer.value='P1 — Jan→14 fév. (FF 43%)';
+    if(selPer){
+      if(nom.includes('— P1')||nom.endsWith('-P1'))
+        selPer.value='P1 — Jan→14 fév. (FF 43%)';
+      else if(nom.includes('— P2')||nom.endsWith('-P2'))
+        selPer.value='P2 — 15 fév.→Déc. (FF 40%)';
+      else if(!selPer.value)
+        selPer.value='P1 — Jan→14 fév. (FF 43%)';
+    }
+    // Afficher P2 uniquement si nom P1 sélectionné
     const wrap=document.getElementById('aff-auto-p2-wrap');
-    if(wrap) wrap.style.display='block';
-    if(persP2&&persP2.taux_journalier){
+    const isP2nom=nom.includes('— P2')||nom.endsWith('-P2');
+    if(wrap) wrap.style.display=isP2nom?'none':'block';
+    if(!isP2nom&&persP2&&persP2.taux_journalier){
       const tauxP2El=document.getElementById('af-aff-p2-taux');
       if(tauxP2El) tauxP2El.value=persP2.taux_journalier;
     }
@@ -3394,6 +3455,64 @@ function affAutofillTaux(did){
   affCalcDep(did);
 }
 
+// Formulaire CIR 2025 : créer NOM—P1 + NOM—P2
+function pers_add_2025(did){
+  const nomBase=(document.getElementById('af-p-nom')?.value||'').trim();
+  if(!nomBase){toast('⚠ Nom du salarié requis','warn');return;}
+  const d=STORE.dossiers[did];if(!d)return;
+  const diplome=document.getElementById('af-p-diplome')?.value||'';
+  const contrat=document.getElementById('af-p-contrat')?.value||'CDI - Tps plein';
+  const categorie=document.getElementById('af-p-cat')?.value||'A';
+  const chvol=parseFloat(document.getElementById('af-p-chvol')?.value)||0;
+  const s1=parseFloat(document.getElementById('af-p1-sal')?.value)||0;
+  const c1=parseFloat(document.getElementById('af-p1-charges')?.value)||0;
+  const j1=parseFloat(document.getElementById('af-p1-tps')?.value)||0;
+  const s2=parseFloat(document.getElementById('af-p2-sal')?.value)||0;
+  const c2=parseFloat(document.getElementById('af-p2-charges')?.value)||0;
+  const j2=parseFloat(document.getElementById('af-p2-tps')?.value)||0;
+  if(!s1||!j1){toast('⚠ Renseignez Salaire + Jours pour P1','warn');return;}
+  if(!s2||!j2){toast('⚠ Renseignez Salaire + Jours pour P2','warn');return;}
+  const taux1=j1>0?Math.round((s1+c1)/j1*100)/100:0;
+  const taux2=j2>0?Math.round((s2+c2)/j2*100)/100:0;
+  const base={diplome,contrat,categorie,charges_vol:chvol};
+  // Noms avec suffixe P1/P2 -- propagés dans Notion
+  STORE.addRow(did,'personnel',{...base,
+    nom:nomBase+' — P1',
+    salaire_brut:s1,charges_sociales:c1,tps_travailles:j1,taux_journalier:taux1,
+    periode_2025:'P1 — Jan→14 fév. (FF 43%)'});
+  STORE.addRow(did,'personnel',{...base,
+    nom:nomBase+' — P2',
+    salaire_brut:s2,charges_sociales:c2,tps_travailles:j2,taux_journalier:taux2,
+    periode_2025:'P2 — 15 fév.→Déc. (FF 40%)'});
+  toast(nomBase+' — P1 ('+taux1+'€/j) + P2 ('+taux2+'€/j) ✓');
+  // Reset formulaire
+  ['af-p-nom','af-p-diplome','af-p-chvol','af-p1-sal','af-p1-charges','af-p1-tps','af-p2-sal','af-p2-charges','af-p2-tps'].forEach(id=>{
+    const el=document.getElementById(id);if(el)el.value='';
+  });
+  const p1=document.getElementById('af-p1-taux-preview');
+  const p2=document.getElementById('af-p2-taux-preview');
+  if(p1)p1.textContent='—';if(p2)p2.textContent='—';
+  renderDossierView(document.getElementById('ci-content'));
+}
+
+// Autofill pour le formulaire CIR 2025 (depuis une saisie précédente)
+function persCIR2025Autofill(did){
+  const nomBase=(document.getElementById('af-p-nom')?.value||'').trim();
+  if(!nomBase)return;
+  const d=STORE.dossiers[did];if(!d)return;
+  const sg=getClientSuggestions(d.clientId);
+  const p1=sg.personnel.find(p=>(p.nom||'')===(nomBase+' — P1'));
+  const p2=sg.personnel.find(p=>(p.nom||'')===(nomBase+' — P2'));
+  const fill=(id,val)=>{const el=document.getElementById(id);if(el&&val)el.value=val;};
+  if(p1){fill('af-p-diplome',p1.diplome);fill('af-p-chvol',p1.charges_vol||0);
+    if(p1.contrat){const s=document.getElementById('af-p-contrat');if(s)s.value=p1.contrat;}
+    if(p1.categorie){const s=document.getElementById('af-p-cat');if(s)s.value=p1.categorie;}
+    fill('af-p1-sal',p1.salaire_brut);fill('af-p1-charges',p1.charges_sociales);fill('af-p1-tps',p1.tps_travailles);
+  }
+  if(p2){fill('af-p2-sal',p2.salaire_brut);fill('af-p2-charges',p2.charges_sociales);fill('af-p2-tps',p2.tps_travailles);}
+  persP1P2Preview();
+}
+
 function persP1P2Preview(){
   const s1=parseFloat(document.getElementById('af-p1-sal')?.value)||0;
   const c1=parseFloat(document.getElementById('af-p1-charges')?.value)||0;
@@ -3403,8 +3522,8 @@ function persP1P2Preview(){
   const j2=parseFloat(document.getElementById('af-p2-tps')?.value)||0;
   const p1=document.getElementById('af-p1-taux-preview');
   const p2=document.getElementById('af-p2-taux-preview');
-  if(p1) p1.textContent=j1>0?'≈ '+Math.round((s1+c1)/j1)+' €/j':'';
-  if(p2) p2.textContent=j2>0?'≈ '+Math.round((s2+c2)/j2)+' €/j':'';
+  if(p1) p1.textContent=j1>0?Math.round((s1+c1)/j1)+' €/j':'—';
+  if(p2) p2.textContent=j2>0?Math.round((s2+c2)/j2)+' €/j':'—';
 }
 
 function affMfCalc(){
@@ -5841,4 +5960,4 @@ console.log('PDJ Console SGA v3.1 — Point du Jour Conseil');
 
 </script>
 </body>
-</html>
+</html
