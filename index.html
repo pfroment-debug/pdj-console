@@ -1092,20 +1092,23 @@ const notionAPI = {
   clientProps(c) {
     const P = this.P;
     // Seul le titre est toujours envoyé — les autres champs uniquement si non-vides
-    const props = { 'Nom': P.title(c.name||'') };
-    if(c.sector)        props['Secteur']           = P.text(c.sector);
-    if(c.contact)       props['Contact']           = P.text(c.contact);
-    if(c.email && c.email.includes('@')) props['Email'] = P.email(c.email);
-    if(c.telephone)     props['Téléphone']        = { phone_number: c.telephone };
-    if(c.type)          props['Type']              = P.text(c.type);
-    if(c.type_mission)  props['Type mission']      = P.text(c.type_mission);
-    if(c.notes)         props['Notes']             = P.text(c.notes);
-    if(c.prochaine_action) props['Prochaine action'] = P.text(c.prochaine_action);
-    if(c.statut_commercial) props['Statut commercial'] = P.select(c.statut_commercial);
-    if(c.statut)        props['Statut']            = P.select(c.statut);
-    if(c.date_prochaine_action) props['Date prochaine action'] = P.date(c.date_prochaine_action);
-    if(parseFloat(c.probabilite)>0) props['Probabilité %'] = P.number(parseFloat(c.probabilite));
-    if(parseFloat(c.montant)>0)     props['Montant estimé €'] = P.number(parseFloat(c.montant));
+    // Tous les champs envoyes pour permettre l'effacement dans Notion
+    const props = {
+      'Nom':                  P.title(c.name||''),
+      'Secteur':              P.text(c.sector||''),
+      'Contact':              P.text(c.contact||''),
+      'Email':                P.email(c.email&&c.email.includes('@')?c.email:null),
+      'Téléphone':             {phone_number:c.telephone||null},
+      'Type':                 P.text(c.type||''),
+      'Type mission':         P.text(c.type_mission||''),
+      'Notes':                P.text(c.notes||''),
+      'Prochaine action':     P.text(c.prochaine_action||''),
+      'Statut commercial':    P.select(c.statut_commercial||''),
+      'Statut':               P.select(c.statut||''),
+      'Date prochaine action':P.date(c.date_prochaine_action||null),
+      'Probabilité %':         P.number(parseFloat(c.probabilite)||0),
+      'Montant estimé €':     P.number(parseFloat(c.montant)||0),
+    };
     return props;
   },
 
@@ -1132,10 +1135,7 @@ const notionAPI = {
       'Statut':             P.select(d.validation ? 'Valid\u00e9' : 'En cours'),
       'Priorit\u00e9':            P.select(d.priorite||'Moyenne'),
     };
-    if(d.lead){
-      const _lUid=this._leadToUid(d.lead);
-      if(_lUid) props['Lead']=P.people([_lUid]);
-    }
+    props['Lead']=P.people(d.lead?( this._leadToUid(d.lead)?[this._leadToUid(d.lead)]:[]):[]);
     if(alertes.length) props['Alertes r\u00e9glementaires']=P.multiSelect(alertes);
     if(d.note_reglementaire) props['Note r\u00e9glementaire']=P.text(d.note_reglementaire);
     props['Notes']=P.text(d.note_interne||'');
@@ -1257,12 +1257,21 @@ const notionAPI = {
 
   async syncRow(did, field, idx) {
     const d = STORE.dossiers[did]; if (!d) return null;
-    const row = d[field]?.[idx]; if (!row) return null;
     const dbKey = {personnel:'personnel',affectations:'affectations',amortissements:'amortissements',prestations:'prestations',subventions:'subventions'}[field];
     if (!dbKey || !this.dbIds[dbKey]) return null;
+    const row = d[field]?.[idx]; if (!row) return null;
     const props = this.rowProps(field, row, d.notionPageId||null);
     if (row.notionPageId) {
-      return this.updatePage(row.notionPageId, props);
+      const r = await this.updatePage(row.notionPageId, props);
+      if(!r && this._lastError?.status===404){
+        // Page supprimee dans Notion -> recreer
+        console.warn('[syncRow] 404 -> recreate',field,idx);
+        row.notionPageId=null;
+        const p2 = await this.createPage(this.dbIds[dbKey], props);
+        if(p2){row.notionPageId=p2.id; STORE._saveLocal();}
+        return p2;
+      }
+      return r;
     } else {
       const page = await this.createPage(this.dbIds[dbKey], props);
       if (page && d[field]?.[idx]) {
@@ -1869,20 +1878,20 @@ const STORE = {
     this.dossiers[did][field].push(row);
     this.emit('rows:change',{did,field}); this._saveLocal();
     const idx=this.dossiers[did][field].length-1;
-    syncIndicator.run(field,()=>notionAPI.syncRow(did,field,idx));
+    syncIndicator.run(did+'_'+field+'_'+idx,()=>notionAPI.syncRow(did,field,idx));
   },
   updateRow(did,field,index,newRow){
     if(!this.dossiers[did]?.[field])return;
     this.dossiers[did][field][index]=newRow;
     this.emit('rows:change',{did,field}); this._saveLocal();
-    syncIndicator.run(field,()=>notionAPI.syncRow(did,field,index));
+    syncIndicator.run(did+'_'+field+'_'+index,()=>notionAPI.syncRow(did,field,index));
   },
   removeRow(did,field,index){
     if(!this.dossiers[did]?.[field])return;
     const rmId=this.dossiers[did][field][index]?.notionPageId;
     this.dossiers[did][field].splice(index,1);
     this.emit('rows:change',{did,field}); this._saveLocal();
-    if(rmId) syncIndicator.run(field,()=>notionAPI.archiveEntity(rmId));
+    if(rmId) syncIndicator.run('del_'+rmId,()=>notionAPI.archiveEntity(rmId));
   },
 
   // ── Calcul CI — Règles Art. 244 quater B CGI ─────────────
@@ -5997,25 +6006,29 @@ const PIL = {
     }
     const items=STORE.notion[col]||[];
     if(items[idx]){Object.assign(items[idx],updated);STORE.notion[col]=[...items];}
-    if(items[idx]?.id&&!String(items[idx].id).startsWith('local-')&&STORE.token&&notionAPI.proxyUrl){
-      const props=this._toProps(col,items[idx]);
-      console.log('[saveEdit] updatePage',col,items[idx].id,Object.keys(props));
-      notionAPI.updatePage(items[idx].id,props).then(r=>{
-        if(r) toast('✓ Syncé dans Notion','ok');
-        else{
-          const err=notionAPI._lastError;
-          toast('⚠ Erreur sync'+(err?' ('+err.status+': '+err.message.slice(0,40)+')':''),'warn');
-        }
-      }).catch(e=>toast('⚠ Erreur sync: '+e.message,'warn'));
-    } else if(items[idx]?.id&&String(items[idx].id).startsWith('local-')&&STORE.token&&notionAPI.proxyUrl){
-      // Item local non encore syncé → créer dans Notion
-      const dbMap={livrables:'pil_livrables',reunions:'pil_reunions',factures:'pil_factures'};
-      const dbId=notionAPI.dbIds[dbMap[col]];
-      if(dbId){
-        notionAPI.createPage(dbId,this._toProps(col,items[idx])).then(p=>{
-          if(p){items[idx].id=p.id;items[idx].url=p.url;toast('✓ Créé dans Notion','ok');}
-          else toast('⚠ Erreur création Notion','warn');
-        }).catch(()=>{});
+    const _sid=items[idx]?.id;
+    if(_sid&&STORE.token&&notionAPI.proxyUrl){
+      if(!String(_sid).startsWith('local-')){
+        // Update via SyncManager pour retry automatique
+        const _props=this._toProps(col,items[idx]);
+        syncIndicator.run(_sid+'_update',()=>
+          notionAPI.updatePage(_sid,_props).then(r=>{
+            if(r) toast('✓ Syncé dans Notion','ok');
+            else{ const err=notionAPI._lastError;
+              toast('⚠ Erreur sync'+(err?' ('+err.status+')':''),'warn'); }
+            return r;
+          })
+        );
+      } else {
+        // Item local -> creer dans Notion
+        const dbMap={livrables:'pil_livrables',reunions:'pil_reunions',factures:'pil_factures'};
+        const dbId=notionAPI.dbIds[dbMap[col]];
+        if(dbId) syncIndicator.run(_sid+'_create',()=>
+          notionAPI.createPage(dbId,this._toProps(col,items[idx])).then(p=>{
+            if(p){items[idx].id=p.id;items[idx].url=p.url;toast('✓ Créé dans Notion','ok');}
+            return p||null;
+          })
+        );
       }
     }
     try{localStorage.setItem('pdj_notion_'+col,JSON.stringify(STORE.notion[col]));}catch(e){}
@@ -6274,11 +6287,7 @@ const PIL = {
       'Statut':P.select(item.statut||''),
       'Priorité':P.select(item.priorite||''),
       'Deadline':P.date(item.deadline||null),
-      ...(()=>{
-        if(!item.lead) return {};
-        const _uid=notionAPI._leadToUid(item.lead);
-        return _uid?{'Lead':P.people([_uid])}:{};
-      })(),
+      'Lead':(()=>{const _u=item.lead?notionAPI._leadToUid(item.lead):null;return P.people(_u?[_u]:[]);})(),
       ...(()=>{
         const ids=[].concat(item.societe||[]).map(id=>{
           const c=Object.values(STORE.clients).find(c=>c.notionPageId===id||c.id===id);
@@ -6288,7 +6297,6 @@ const PIL = {
       })(),
       ...(()=>{
         const dids=[].concat(item.rel_dossiers||[]).map(id=>{
-          // id peut etre un ID local OU un notionPageId (si chargé depuis Notion)
           const d=STORE.dossiers[id]||Object.values(STORE.dossiers).find(d2=>d2.notionPageId===id);
           return d?d.notionPageId||null:null;
         }).filter(Boolean);
@@ -6303,11 +6311,7 @@ const PIL = {
       'Statut':P.select(item.statut||''),
       'Priorité':P.select(item.priorite||''),
       'Compte-rendu':P.text(item.compte_rendu||''),
-      ...(()=>{
-        if(!item.lead) return {};
-        const _uid=notionAPI._leadToUid(item.lead);
-        return _uid?{'Lead':P.people([_uid])}:{};
-      })(),
+      'Lead':(()=>{const _u=item.lead?notionAPI._leadToUid(item.lead):null;return P.people(_u?[_u]:[]);})(),
       ...(()=>{
         const ids=[].concat(item.societe||[]).map(id=>{
           const c=Object.values(STORE.clients).find(c=>c.notionPageId===id||c.id===id);
