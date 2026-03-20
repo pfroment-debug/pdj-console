@@ -1086,6 +1086,7 @@ const notionAPI = {
       'Statut':             P.select(d.validation ? 'Valid\u00e9' : 'En cours'),
       'Priorit\u00e9':            P.select(d.priorite||'Moyenne'),
     };
+    if(d.lead) props['Lead']=P.select(d.lead);
     if(alertes.length) props['Alertes r\u00e9glementaires']=P.multiSelect(alertes);
     if(d.note_reglementaire) props['Note r\u00e9glementaire']=P.text(d.note_reglementaire);
     if(clientNotionId) props['Soci\u00e9t\u00e9']=P.relation([clientNotionId]);
@@ -1212,7 +1213,11 @@ const notionAPI = {
       return this.updatePage(row.notionPageId, props);
     } else {
       const page = await this.createPage(this.dbIds[dbKey], props);
-      if (page && d[field][idx]) { d[field][idx].notionPageId = page.id; STORE._saveLocal(); }
+      if (page && d[field]?.[idx]) {
+        d[field][idx].notionPageId = page.id;
+        STORE._saveLocal();
+        console.log('[syncRow] created',field,idx,page.id);
+      }
       return page;
     }
   },
@@ -1248,6 +1253,8 @@ const notionAPI = {
       deadline:    this._extractProp(p, 'Deadline') || this._extractProp(p, 'Date') || '',
       responsable: this._extractProp(p, 'Responsable') || this._extractProp(p, 'Assignee') || '',
       societes:    this._extractProp(p, 'Société') || this._extractProp(p, 'Client') || [],
+      lead:        this._extractProp(p, 'Lead') || '',
+      societe:     this._extractProp(p, 'Société') || [],
     }));
 
     await loadCol('pil_reunions', 'reunions', p => ({
@@ -1258,6 +1265,8 @@ const notionAPI = {
       statut:       this._extractProp(p, 'Statut') || this._extractProp(p, 'Status') || '',
       participants: this._extractProp(p, 'Participants') || this._extractProp(p, 'Invités') || [],
       societes:     this._extractProp(p, 'Société') || this._extractProp(p, 'Client') || [],
+      lead:         this._extractProp(p, 'Lead') || '',
+      societe:      this._extractProp(p, 'Société') || [],
     }));
 
     await loadCol('pil_societes', 'societes', p => ({
@@ -1355,6 +1364,7 @@ const notionAPI = {
           exercice:   this._extractProp(p, 'Exercice d\u00e9p\u00f4t') || 2025,
           validation: this._extractProp(p, 'Validation') || false,
           honoraires: this._extractProp(p, 'Honoraires PDJ €') || 0,
+          lead: this._extractProp(p, 'Lead') || '',
           personnel:[], affectations:[], amortissements:[], prestations:[], subventions:[]
         };
         if (clients[clientId]) clients[clientId]._dossierIds.push(did);
@@ -1909,8 +1919,18 @@ const STORE = {
         });
         this.clients = {...data.clients, ...localOnly};
       }
-      // Toujours remplacer les dossiers si Notion en a
       if(nbDos>0) this.dossiers=data.dossiers;
+      // Restaurer notionPageIds caches (evite doublons au prochain syncRow)
+      try{
+        const spids2=localStorage.getItem('pdj_row_pids');
+        if(spids2){const pm=JSON.parse(spids2);
+          Object.entries(pm).forEach(([k,pid])=>{
+            const pts=k.split('_');const did2=pts[0];const fld=pts[1];const ii=parseInt(pts[2]);
+            if(this.dossiers[did2]?.[fld]?.[ii]&&!this.dossiers[did2][fld][ii].notionPageId)
+              this.dossiers[did2][fld][ii].notionPageId=pid;
+          });
+        }
+      }catch(e){}
       // Si bases vides : conserver les données locales
       this.token=token; this.loadingState='ready';
       this.emit('loading:done',data); this._saveLocal();
@@ -1953,6 +1973,15 @@ const STORE = {
       localStorage.setItem('pdj_clients',JSON.stringify(this.clients));
       localStorage.setItem('pdj_dossiers',JSON.stringify(this.dossiers));
       if(this.cockpit)localStorage.setItem('pdj_cockpit',JSON.stringify(this.cockpit));
+      const pidMap={};
+      Object.values(this.dossiers).forEach(d=>{
+        ['personnel','affectations','amortissements','prestations','subventions'].forEach(f=>{
+          (d[f]||[]).forEach((r,i)=>{
+            if(r.notionPageId) pidMap[d.id+'_'+f+'_'+i]=r.notionPageId;
+          });
+        });
+      });
+      localStorage.setItem('pdj_row_pids',JSON.stringify(pidMap));
     }catch(e){}
   },
   _loadLocal(){
@@ -1965,6 +1994,15 @@ const STORE = {
       // (évite que d'anciens clients localStorage polluent la liste)
       if(sc && !tok){Object.assign(this.clients,JSON.parse(sc));}
       if(sd && !tok){Object.assign(this.dossiers,JSON.parse(sd));}
+      const spids=localStorage.getItem('pdj_row_pids');
+      if(spids){try{
+        const pidMap=JSON.parse(spids);
+        Object.entries(pidMap).forEach(([key,pid])=>{
+          const parts=key.split('_');const did=parts[0];const field=parts[1];const i=parseInt(parts[2]);
+          if(this.dossiers[did]?.[field]?.[i]&&!this.dossiers[did][field][i].notionPageId)
+            this.dossiers[did][field][i].notionPageId=pid;
+        });
+      }catch(e){}}
       if(sck&&this.cockpit)Object.assign(this.cockpit,JSON.parse(sck));
       if(tok){this.token=tok;notionAPI.token=tok;}
       ['societes','livrables','reunions','ci'].forEach(n=>{
@@ -2230,6 +2268,7 @@ function renderDossierView(container){
       <div class="dos-title-bar">
         <div class="dos-title">${d.dispositif} ${d.annee}</div>
         <span class="chip ${d.validation?'chip-ok':'chip-gold'}">${d.validation?'Validé':'En cours'}</span>
+        ${d.lead?`<span class='chip' style='background:${{Paul:'rgba(55,138,221,.2)',Guillaume:'rgba(83,74,183,.2)',Axel:'rgba(0,255,156,.12)',Lucile:'rgba(249,21,117,.15)'}[d.lead]||'var(--t08)'};color:${{Paul:'#378ADD',Guillaume:'#8877EE',Axel:'var(--green)',Lucile:'var(--pink)'}[d.lead]||'var(--t60)'};cursor:pointer;' onclick='dosEditLead("${esc(d.id)}")'>👤 ${esc(d.lead)}</span>`:`<button class='btn btn-ghost btn-sm' style='font-size:9px;padding:2px 8px;' onclick='dosEditLead("${esc(d.id)}")'>+ Lead</button>`}
         <select style="background:transparent;border:1px solid ${(d.priorite||'Moyenne')==='Haute'?'rgba(249,21,117,.4)':(d.priorite||'Moyenne')==='Basse'?'rgba(255,255,255,.12)':'rgba(255,215,0,.3)'};color:${(d.priorite||'Moyenne')==='Haute'?'var(--pink)':(d.priorite||'Moyenne')==='Basse'?'var(--t40)':'var(--gold)'};border-radius:99px;padding:2px 10px;font-family:var(--font);font-size:9.5px;font-weight:800;outline:none;cursor:pointer;text-transform:uppercase;letter-spacing:.05em;"
           onchange="STORE.updateDossier('${esc(d.id)}','priorite',this.value);tabRefresh()">
           ${['Haute','Moyenne','Basse'].map(p=>`<option value="${p}" style="background:var(--navy-card);color:#fff;" ${(d.priorite||'Moyenne')===p?'selected':''}>${p}</option>`).join('')}
@@ -2264,6 +2303,10 @@ function renderDossierView(container){
     </div>
     <div class="dos-right">${renderCalcPanel(d,ci)}${renderPilRelations(d)}</div>
   </div>`;
+  // Activer les boutons de form + SS apres render
+  _bindFormBtns(_ciDossierId);
+  SS.clear();
+  setTimeout(()=>SS.registerForDossier(_ciDossierId),40);
 }
 
 function renderTab(d){
@@ -2277,7 +2320,7 @@ function renderTab(d){
 }
 
 function _bindFormBtns(did){
-  // Binder les boutons Ajouter après rendu (addFormHtml n'a plus de onclick HTML)
+  const _d=STORE.dossiers[did];
   const map={pers:pers_add,aff:aff_add,amort:amort_add,presta:presta_add,subv:subv_add};
   Object.entries(map).forEach(([id,fn])=>{
     const btn=document.getElementById('btn-add-'+id);
@@ -2286,13 +2329,25 @@ function _bindFormBtns(did){
       btn.addEventListener('click',()=>fn(did));
     }
   });
+  // Initialiser les pickers (entrées existantes)
+  if(_d){['pers','aff','amort','presta','subv'].forEach(fid=>{
+    const fm={pers:'personnel',aff:'affectations',amort:'amortissements',presta:'prestations',subv:'subventions'};
+    const items=npBuildItems(fm[fid],_d.clientId,did);
+    if(items.length) npBuild(fid,items);
+  });}
+  // SmartSelect
+  SS.clear();
+  setTimeout(()=>SS.registerForDossier(did),30);
 }
 
 function tabRefresh(){
+  if(!_ciDossierId||!STORE.dossiers[_ciDossierId])return;
   const el=document.getElementById('ci-tab-body');
   if(el&&_ciDossierId){
     el.innerHTML=renderTab(STORE.dossiers[_ciDossierId]);
     _bindFormBtns(_ciDossierId);
+    SS.clear();
+    setTimeout(()=>SS.registerForDossier(_ciDossierId),40);
   }
   const cr=document.querySelector('.dos-right');
   if(cr&&_ciDossierId){const d=STORE.dossiers[_ciDossierId];cr.innerHTML=renderCalcPanel(d,STORE.calcCI(d));}
@@ -2416,6 +2471,292 @@ function renderProjTab(d){
 
 
 // ─── Suggestions historiques par client ──────────────────
+
+// SS — SmartSelect : combobox universel depuis les bases Notion
+const SS = {
+  _reg: {},
+
+  register(inputId, getItems, onSelect) {
+    // Toujours mettre a jour getItems (les donnees changent)
+    if(this._reg[inputId]) {
+      this._reg[inputId].getItems = getItems;
+      if(onSelect) this._reg[inputId].onSelect = onSelect;
+    } else {
+      this._reg[inputId] = {getItems, onSelect:onSelect||null};
+    }
+    const el = document.getElementById(inputId);
+    if(!el || el._ssbound) return;
+    el._ssbound = true;
+    el.setAttribute('autocomplete','off');
+    el.addEventListener('input',  ()=>this._show(inputId), {passive:true});
+    el.addEventListener('focus',  ()=>this._show(inputId), {passive:true});
+    el.addEventListener('keydown',(e)=>this._key(inputId,e));
+    document.addEventListener('click',(e)=>{
+      const drop=document.getElementById('ss-drop-'+inputId);
+      if(drop&&!drop.contains(e.target)&&e.target.id!==inputId) drop.style.display='none';
+    },{capture:true});
+  },
+
+  _show(inputId) {
+    const reg=this._reg[inputId]; if(!reg) return;
+    const el=document.getElementById(inputId); if(!el) return;
+    const q=(el.value||'').toLowerCase().trim();
+    const all=reg.getItems();
+    const items=(q?all.filter(it=>(it.label+' '+(it.sub||'')).toLowerCase().includes(q)):all)
+      .sort((a,b)=>{
+        if(a._create&&!b._create)return 1;if(b._create&&!a._create)return -1;
+        if(a.notionPageId&&!b.notionPageId)return -1;
+        if(b.notionPageId&&!a.notionPageId)return 1;
+        return a.label.localeCompare(b.label);
+      });
+    if(!items.length){const d=document.getElementById('ss-drop-'+inputId);if(d)d.style.display='none';return;}
+
+    let drop=document.getElementById('ss-drop-'+inputId);
+    if(!drop){
+      drop=document.createElement('div');
+      drop.id='ss-drop-'+inputId;
+      drop.style.cssText='position:fixed;z-index:99999;max-height:240px;overflow-y:auto;background:#0b0e3a;border:1px solid rgba(24,0,255,.45);border-radius:6px;box-shadow:0 12px 40px rgba(0,0,0,.7);';
+      document.body.appendChild(drop);
+      document.addEventListener('pointerdown',(ev)=>{
+        const d2=document.getElementById('ss-drop-'+inputId);
+        if(d2&&!d2.contains(ev.target)&&ev.target.id!==inputId)d2.style.display='none';
+      },{capture:true,passive:true});
+    }
+    const rect=el.getBoundingClientRect();
+    drop.style.top=(rect.bottom+2)+'px';
+    drop.style.left=rect.left+'px';
+    drop.style.width=Math.max(rect.width,200)+'px';
+
+    drop.innerHTML='';
+    items.slice(0,20).forEach(it=>{
+      const row=document.createElement('div');
+      row.style.cssText='padding:6px 10px;cursor:pointer;border-bottom:1px solid rgba(255,255,255,.05);display:flex;align-items:center;gap:8px;';
+      if(it._create){
+        row.style.borderTop='1px solid rgba(0,255,156,.15)';
+        row.innerHTML='<div style="flex:1;font-size:12px;font-weight:700;color:var(--green);">'+esc(it.sub||it.label)+'</div>';
+      } else {
+      const badge=it.notionPageId
+        ?'<span style="font-size:8px;font-weight:700;padding:1px 5px;border-radius:3px;background:rgba(24,0,255,.25);color:#8899FF;flex-shrink:0;">Notion</span>'
+        :'<span style="font-size:8px;color:rgba(255,255,255,.2);flex-shrink:0;">local</span>';
+      row.innerHTML='<div style="flex:1;min-width:0;">'
+        +'<div style="font-size:12px;font-weight:600;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;color:#fff;">'+esc(it.label)+'</div>'
+        +(it.sub?'<div style="font-size:10px;color:rgba(255,255,255,.4);overflow:hidden;text-overflow:ellipsis;white-space:nowrap;">'+esc(it.sub)+'</div>':'')
+        +'</div>'+badge;
+      }
+      row.onmouseover=()=>row.style.background='rgba(24,0,255,.18)';
+      row.onmouseout=()=>row.style.background='';
+      row.onmousedown=(e)=>{e.preventDefault();this._pick(inputId,it);};
+      drop.appendChild(row);
+    });
+    if(items.length>20){
+      const m=document.createElement('div');
+      m.style.cssText='padding:5px 10px;font-size:10px;color:rgba(255,255,255,.3);text-align:center;';
+      m.textContent='+'+(items.length-20)+' — affinez la recherche';
+      drop.appendChild(m);
+    }
+    drop.style.display='block';
+  },
+
+  _key(inputId,e) {
+    const drop=document.getElementById('ss-drop-'+inputId);
+    if(!drop||drop.style.display==='none') return;
+    const rows=[...drop.querySelectorAll('[onmousedown]')];
+    const cur=drop.querySelector('[data-sel]');
+    const idx=rows.indexOf(cur);
+    if(e.key==='ArrowDown'){e.preventDefault();rows.forEach(r=>{r.removeAttribute('data-sel');r.style.background='';});const n=rows[idx<0?0:Math.min(idx+1,rows.length-1)];if(n){n.setAttribute('data-sel','1');n.style.background='rgba(24,0,255,.18)';n.scrollIntoView({block:'nearest'});}
+    }else if(e.key==='ArrowUp'){e.preventDefault();rows.forEach(r=>{r.removeAttribute('data-sel');r.style.background='';});const p=rows[Math.max(0,idx-1)];if(p){p.setAttribute('data-sel','1');p.style.background='rgba(24,0,255,.18)';p.scrollIntoView({block:'nearest'});}
+    }else if(e.key==='Enter'&&cur){e.preventDefault();
+      const reg=this._reg[inputId];if(!reg)return;
+      const q=(document.getElementById(inputId)?.value||'').toLowerCase();
+      const all=reg.getItems();const filtered=q?all.filter(it=>(it.label+' '+(it.sub||'')).toLowerCase().includes(q)):all;
+      const si=rows.indexOf(cur);if(filtered[si])this._pick(inputId,filtered[si]);
+    }else if(e.key==='Escape'||e.key==='Tab'){drop.style.display='none';}
+  },
+
+  _pick(inputId,item) {
+    const el=document.getElementById(inputId);if(!el)return;
+    el.value=item.label;
+    el.style.borderColor=item.notionPageId?'rgba(24,0,255,.5)':'rgba(0,255,156,.25)';
+    el.title=item.notionPageId?'Notion: '+item.notionPageId.slice(0,8)+'...':'Entree locale';
+    let h=document.getElementById('ss-pid-'+inputId);
+    if(!h){h=document.createElement('input');h.type='hidden';h.id='ss-pid-'+inputId;document.body.appendChild(h);}
+    h.value=item.notionPageId||item.id||'';
+    const reg=this._reg[inputId];
+    if(reg?.onSelect) reg.onSelect(item);
+    el.dispatchEvent(new Event('change',{bubbles:true}));
+    const drop=document.getElementById('ss-drop-'+inputId);if(drop)drop.style.display='none';
+  },
+
+  getPid(inputId){return document.getElementById('ss-pid-'+inputId)?.value||'';},
+  close(inputId){const d=document.getElementById('ss-drop-'+inputId);if(d)d.style.display='none';},
+  clear(){
+    // Ne pas supprimer les dropdowns body-level (ils persistent correctement)
+    // Juste vider le registre pour forcer re-bind sur le prochain render
+    Object.keys(this._reg).forEach(id=>{
+      const el=document.getElementById(id);
+      if(el) el._ssbound=false;
+    });
+    this._reg={};
+  },
+
+  registerForDossier(did){
+    const d=STORE.dossiers[did];if(!d)return;
+    const sg=getClientSuggestions(d.clientId);
+
+    // Nom salarié (form standard + CIR 2025)
+    ['af-nom','af-p-nom'].forEach(id=>{
+      if(!document.getElementById(id))return;
+      const isCIR2025=id==='af-p-nom';
+      this.register(id,()=>{
+        const seen=new Set();
+        return sg.personnel.map(p=>{
+          const base=isCIR2025?(p.nom||'').replace(/ — P[12]$/,''):p.nom||'?';
+          if(isCIR2025&&seen.has(base))return null; seen.add(base);
+          return{label:base,
+            sub:[p.contrat||'',p.categorie?'Cat.'+p.categorie:'',p.salaire_brut?p.salaire_brut+'€':''].filter(Boolean).join(' · '),
+            notionPageId:p.notionPageId||'',data:p};
+        }).filter(Boolean);
+      },(item)=>{
+        const f=(id,v)=>{const el=document.getElementById(id);if(el&&v!=null)el.value=v;};
+        if(isCIR2025){
+          f('af-p-diplome',item.data.diplome||'');f('af-p-chvol',item.data.charges_vol||0);
+          const sc=document.getElementById('af-p-contrat');if(sc&&item.data.contrat)sc.value=item.data.contrat;
+          const sd=document.getElementById('af-p-cat');if(sd&&item.data.categorie)sd.value=item.data.categorie;
+        } else {
+          f('af-diplome',item.data.diplome||'');f('af-charges_vol',item.data.charges_vol||0);
+          f('af-sal',item.data.salaire_brut||0);f('af-charges',item.data.charges_sociales||0);f('af-tps',item.data.tps_travailles||0);
+          const sc=document.getElementById('af-contrat');if(sc&&item.data.contrat)sc.value=item.data.contrat;
+          const sd=document.getElementById('af-diplomecat');if(sd&&item.data.categorie)sd.value=item.data.categorie;
+        }
+      });
+    });
+
+    // Projet R&D (tous formulaires)
+    ['af-proj'].forEach(id=>{
+      if(!document.getElementById(id))return;
+      const projs=[...new Set(sg.projets)];
+      this.register(id,()=>projs.map(p=>({label:p,sub:'Projet R&D',notionPageId:'',data:{projet:p}})));
+    });
+
+    // Libelle amortissement
+    if(document.getElementById('af-lib')){
+      this.register('af-lib',()=>sg.libelles.map(l=>({
+        label:l.libelle||l.denomination||'?',
+        sub:l.cout?l.cout+'€':'' ,notionPageId:l.notionPageId||'',data:l
+      })),(item)=>{
+        const f=(id,v)=>{const el=document.getElementById(id);if(el&&v!=null)el.value=v;};
+        f('af-cout',item.data.cout||0);f('af-dur',item.data.duree||0);
+        f('af-amp',item.data.amort_periode||0);f('af-pct',item.data.taux_affectation||100);
+      });
+    }
+
+    // Organisme subventions
+    if(document.getElementById('af-org')){
+      this.register('af-org',()=>sg.organismes.map(o=>({
+        label:o.organisme||o.intitule||o.nom||'?',sub:'',notionPageId:o.notionPageId||'',data:o
+      })));
+    }
+  },
+
+  registerAff(did){
+    const d=STORE.dossiers[did];if(!d)return;
+    const sg=getClientSuggestions(d.clientId);
+    if(!document.getElementById('af-nom'))return;
+    this.register('af-nom',()=>sg.personnel.map(p=>({
+      label:p.nom||'?',
+      sub:[p.taux_journalier?p.taux_journalier+'€/j':'',p.periode_2025?(p.periode_2025.split('—')[0]||'').trim():''].filter(Boolean).join(' · '),
+      notionPageId:p.notionPageId||'',data:p
+    })),(item)=>{
+      if(item.data.taux_journalier){const el=document.getElementById('af-taux');if(el){el.value=item.data.taux_journalier;affCalcDep(did);}}
+      affAutofillTaux(did);
+    });
+  },
+
+  // Champs Societe dans PIL (appelee depuis PIL._rf pour le champ societe)
+  registerSociete(inputId, onSelect){
+    this.register(inputId,()=>Object.values(STORE.clients)
+      .sort((a,b)=>a.name.localeCompare(b.name))
+      .map(c=>({
+        label:c.name,
+        sub:[c.sector||'',c.type||''].filter(Boolean).join(' · '),
+        notionPageId:c.notionPageId||'',data:c
+      })),onSelect||null);
+  },
+
+  // openSoc : lazy-register + open (handler inline, survit au re-render PIL)
+  openSoc(inputId) {
+    if(!this._reg[inputId]){
+      this.register(inputId, ()=>Object.values(STORE.clients)
+        .sort((a,b)=>a.name.localeCompare(b.name))
+        .map(c=>({label:c.name,
+          sub:[c.sector||'',c.type||''].filter(Boolean).join(' '),
+          notionPageId:c.notionPageId||'',data:c})),
+        (item)=>{
+          let h=document.getElementById('ss-pid-'+inputId);
+          if(!h){h=document.createElement('input');h.type='hidden';h.id='ss-pid-'+inputId;document.body.appendChild(h);}
+          h.value=item.notionPageId||item.data?.notionPageId||item.data?.id||'';
+          // Option creer : ouvre modal client
+          if(item._create){
+            const _sL=item.label; const _sI=inputId;
+            const _oc=window.ciNewClientConfirm;
+            window.ciNewClientConfirm=()=>{
+              if(_oc)_oc();
+              window.ciNewClientConfirm=_oc;
+              setTimeout(()=>{
+                const nc=Object.values(STORE.clients).find(c=>c.name.toLowerCase()===_sL.toLowerCase());
+                if(nc){
+                  const el2=document.getElementById(_sI);
+                  if(el2){el2.value=nc.name;el2.style.borderColor='rgba(0,255,156,.5)';}
+                  let hh=document.getElementById('ss-pid-'+_sI);
+                  if(!hh){hh=document.createElement('input');hh.type='hidden';hh.id='ss-pid-'+_sI;document.body.appendChild(hh);}
+                  hh.value=nc.notionPageId||nc.id;
+                }
+              },300);
+            };
+            ciNewClient();
+            setTimeout(()=>{const inp=document.getElementById('ci-nc-name');
+              if(inp){inp.value=_sL;inp.dispatchEvent(new Event('input'));}},80);
+            return;
+          }
+        }
+      );
+    }
+    // Option creer si aucun exact match
+    const reg=this._reg[inputId];
+    if(reg){
+      const origGet=reg.getItems;
+      const q=(document.getElementById(inputId)?.value||'').trim();
+      reg.getItems=()=>{
+        const items=origGet();
+        // Toujours proposer la creation en bas de liste
+        const createLabel=q?'➕ Créer "'+q+'" comme nouveau client':'+ Nouveau client PDJ';
+        const alreadyExact=q&&items.some(it=>it.label.toLowerCase()===q.toLowerCase());
+        if(!alreadyExact){
+          items.push({label:q||'Nouveau client',sub:createLabel,notionPageId:'',_create:true,data:{name:q||''}});
+        }
+        return items;
+      };
+      this._show(inputId);
+      reg.getItems=origGet; // restaurer
+    }
+  },
+
+  // Lire l'ID selectionne pour societe
+  getSocId(inputId){
+    const pid=document.getElementById('ss-pid-'+inputId)?.value||'';
+    if(pid){
+      const byPid=Object.values(STORE.clients).find(c=>c.id===pid||c.notionPageId===pid);
+      return byPid?byPid.notionPageId||byPid.id:pid;
+    }
+    const typed=(document.getElementById(inputId)?.value||'').trim().toLowerCase();
+    if(!typed) return '';
+    const c=Object.values(STORE.clients).find(c=>
+      c.name.toLowerCase()===typed||c.name.toLowerCase().startsWith(typed));
+    return c?c.notionPageId||c.id:'';
+  },
+
+};
+
 function getClientSuggestions(clientId){
   const dids=STORE.clientDossierIds(clientId);
   const personnel=new Map(), projets=new Set(),
@@ -2677,6 +3018,14 @@ function addFormHtml(id,fields){
 function renderPersTab(d){
   const rows=d.personnel||[];
   const sg=buildDatalistsForClient(d.clientId,'pers');
+  window['npFill_pers']=(data)=>{
+    const f=(id,v)=>{const el=document.getElementById(id);if(el&&v!=null)el.value=v;};
+    f('af-nom',data.nom);f('af-diplome',data.diplome||'');f('af-charges_vol',data.charges_vol||0);
+    f('af-sal',data.salaire_brut||0);f('af-charges',data.charges_sociales||0);f('af-tps',data.tps_travailles||0);
+    const sc=document.getElementById('af-contrat');if(sc&&data.contrat)sc.value=data.contrat;
+    const sd=document.getElementById('af-diplomecat');if(sd&&data.categorie)sd.value=data.categorie;
+    document.getElementById('add-form-pers').style.display='flex';
+  };
   const isCIR2025 = (d.annee===2025 && d.dispositif==='CIR');
   const anneeIsPeriode = isCIR2025;
   const periodeOpts = [];
@@ -2775,7 +3124,7 @@ function renderPersTab(d){
     </div>
     <div style='font-size:10px;color:var(--t40);margin-top:4px;'>Sal.P1 + Sal.P2 = Salaire annuel — Taux P1 = (Sal+Ch P1) ÷ Jours P1 — Taux P2 = (Sal+Ch P2) ÷ Jours P2</div>
   ` : '';
-  if(!rows.length){const noteR=`<div class="alert alert-info" style="margin:10px 14px 0;font-size:11px;"><span>⚖</span><span><strong style="color:var(--green)">Art. 244 quater B</strong> — Cotisations obligatoires uniquement (URSSAF, retraite légale). Les charges volontaires (intéressement, mutuelle sur-oblig…) sont non déductibles.</span></div>`;return `<div class="twrap" style="margin:14px 24px;"><div class="thead2"><span class="ttitle">Personnel R&D</span>${addBtn('Personnel',"document.getElementById('add-form-pers').style.display='flex'",'pers')}</div>${isCIR2025?formCIR2025:form}${noteR}${emptyState('Aucun personnel déclaré.')}</div>`;}
+  if(!rows.length){const noteR=`<div class="alert alert-info" style="margin:10px 14px 0;font-size:11px;"><span>⚖</span><span><strong style="color:var(--green)">Art. 244 quater B</strong> — Cotisations obligatoires uniquement (URSSAF, retraite légale). Les charges volontaires (intéressement, mutuelle sur-oblig…) sont non déductibles.</span></div>`;return `<div class="twrap" style="margin:14px 24px;"><div class="thead2"><span class="ttitle">Personnel R&D</span>${addBtn('Personnel',"document.getElementById('add-form-pers').style.display='flex';SS.registerForDossier('${d.id}')",'pers')}</div>${isCIR2025?formCIR2025:form}${noteR}${emptyState('Aucun personnel déclaré.')}</div>`;}
   const noteReglementaire=`<div class="alert alert-info" style="margin:10px 14px 0;font-size:11px;">
     <span>⚖</span>
     <span><strong style="color:var(--green)">Art. 244 quater B, II-a CGI</strong> — Les charges patronales éligibles sont exclusivement les <strong>cotisations sociales obligatoires</strong> (URSSAF, retraite légale, prévoyance légale). Les charges volontaires (intéressement, participation, tickets restaurant, mutuelle sur-obligatoire, PEE…) sont <strong style="color:var(--pink)">non déductibles</strong> et doivent être isolées dans la colonne Ch. vol.</span>
@@ -2808,6 +3157,14 @@ function renderAffTab(d){
   const labelActivite=isINNO?'Activité INNO':'Activité R&D';
 
   buildDatalistsForClient(d.clientId,'aff');
+  window['npFill_aff']=(data)=>{
+    const f=(id,v)=>{const el=document.getElementById(id);if(el&&v!=null)el.value=v;};
+    f('af-nom',data.nom);f('af-proj',data.projet||'');f('af-taux',data.taux||0);
+    f('af-tps-proj',data.tps_passes||0);f('af-tps-val',data.tps_eligibles||0);
+    f('af-dep-eng',data.depenses_engagees||0);f('af-dep',data.depenses_valorisables||0);
+    const sp=document.getElementById('af-aff-periode2025');if(sp&&data.periode_2025)sp.value=data.periode_2025;
+    document.getElementById('add-form-aff').style.display='flex';
+  };
   const nomsCourant=(d.personnel||[]).map(p=>p.nom).filter(Boolean);
   const dl=document.getElementById('aff-dl-noms-courant')||document.createElement('datalist');
   dl.id='aff-dl-noms-courant';
@@ -2832,7 +3189,7 @@ function renderAffTab(d){
         <label>Chercheur / Responsable</label>
         <input id="af-nom" class="" type="text" placeholder="DUPONT Jean" style="width:160px;background:var(--t08);border:1px solid rgba(0,255,156,.2);border-radius:4px;padding:5px 8px;font-family:var(--font);font-size:12px;color:#fff;outline:none;"
           list="aff-dl-noms-courant" autocomplete="off"
-          oninput="affAutofillTaux('${d.id}')">
+          oninput="affAutofillTaux('${d.id}')" onfocus="SS.registerAff('${d.id}')">
       </div>
       <div>
         <label>Projet ${isINNO?'INNO':'R&D'}</label>
@@ -2905,7 +3262,7 @@ function renderAffTab(d){
 
   // ── Tableau récap ─────────────────────────────────────────
   if(!rows.length)return `<div class="twrap" style="margin:14px 24px;">
-    <div class="thead2"><span class="ttitle">${titre}</span>${addBtn(isINNO?'Affectation INNO':'Affectation R&D',"document.getElementById('add-form-aff').style.display='flex'",'aff')}</div>
+    <div class="thead2"><span class="ttitle">${titre}</span>${addBtn(isINNO?'Affectation INNO':'Affectation R&D',"document.getElementById('add-form-aff').style.display='flex';SS.registerAff('${d.id}');SS.registerForDossier('${d.id}')",'aff')}</div>
     ${form}${emptyState('Aucune affectation déclarée.')}
   </div>`;
 
@@ -2919,7 +3276,7 @@ function renderAffTab(d){
         <span class="tcount">${rows.length}</span>
         <span style="font-size:10px;color:var(--t40);">Engagées : <strong style="color:#fff;">${EUR(totEng)}</strong></span>
         <span style="font-size:10px;color:var(--green);">Valorisables : <strong>${EUR(totVal)}</strong></span>
-        ${addBtn(isINNO?'INNO':'R&D',"document.getElementById('add-form-aff').style.display='flex'",'aff')}
+        ${addBtn(isINNO?'INNO':'R&D',"document.getElementById('add-form-aff').style.display='flex';SS.registerAff('${d.id}')",'aff')}
       </div>
     </div>
     ${form}
@@ -2956,13 +3313,20 @@ function renderAffTab(d){
 function renderAmortTab(d){
   const rows=d.amortissements||[];
   buildDatalistsForClient(d.clientId,'amort');
+  window['npFill_amort']=(data)=>{
+    const f=(id,v)=>{const el=document.getElementById(id);if(el&&v!=null)el.value=v;};
+    f('af-lib',data.libelle||data.denomination||'');f('af-proj',data.projet||'');
+    f('af-cout',data.cout||data.valeur_amortissement||0);f('af-dur',data.duree||0);
+    f('af-amp',data.amort_periode||0);f('af-pct',data.taux_affectation||100);
+    document.getElementById('add-form-amort').style.display='flex';
+  };
   const form=addFormHtml('amort',[
     {id:'lib',label:'Dénomination',ph:'Serveur CMS1',w:'150px',dl:'amort-dl-lib',onchange:`amortAutofill('${d.id}')`},
     {id:'proj',label:'Projet',ph:'Projet R&D',w:'110px',dl:'amort-dl-proj'},
     {id:'cout',label:'Coût total €',type:'number',ph:'65000',w:'80px'},{id:'dur',label:'Durée mois',type:'number',ph:'36',w:'60px'},
     {id:'amp',label:'Amort. période €',type:'number',ph:'21860',w:'90px'},{id:'pct',label:'% CI',type:'number',ph:'100',w:'55px'},
   ]);
-  if(!rows.length)return `<div class="twrap" style="margin:14px 24px;"><div class="thead2"><span class="ttitle">Amortissements R&D</span>${addBtn('Amortissement',"document.getElementById('add-form-amort').style.display='flex'",'amort')}</div>${form}${emptyState('Aucun amortissement.')}</div>`;
+  if(!rows.length)return `<div class="twrap" style="margin:14px 24px;"><div class="thead2"><span class="ttitle">Amortissements R&D</span>${addBtn('Amortissement',"document.getElementById('add-form-amort').style.display='flex';SS.registerForDossier('${d.id}')",'amort')}</div>${form}${emptyState('Aucun amortissement.')}</div>`;
   return `<div class="twrap" style="margin:14px 24px;">
     <div class="thead2"><span class="ttitle">Amortissements R&D</span><div style="display:flex;gap:8px;"><span class="tcount">${rows.length}</span>${addBtn('Amortissement',"document.getElementById('add-form-amort').style.display='flex'",'amort')}</div></div>
     ${form}
@@ -2986,6 +3350,13 @@ function renderAmortTab(d){
 function renderPrestaTab(d){
   const rows=d.prestations||[];
   buildDatalistsForClient(d.clientId,'presta');
+  window['npFill_presta']=(data)=>{
+    const f=(id,v)=>{const el=document.getElementById(id);if(el&&v!=null)el.value=v;};
+    f('af-nom',data.sous_traitant||data.nom||'');f('af-siren',data.siren||'');f('af-proj',data.projet||'');
+    f('af-mt',data.montant||data.montant_facture||0);f('af-dep',data.depenses_valorisables||0);
+    const sp=document.getElementById('af-pp');if(sp&&data.public_prive)sp.value=data.public_prive;
+    document.getElementById('add-form-presta').style.display='flex';
+  };
   const form=addFormHtml('presta',[
     {id:'nom',label:'Sous-traitant',ph:'Lab CNRS',w:'150px',dl:'presta-dl-st',onchange:`prestaAutofill('${d.id}')`},
     {id:'siren',label:'SIREN',ph:'804104446',w:'90px'},
@@ -2995,7 +3366,7 @@ function renderPrestaTab(d){
     {id:'dep',label:'Dép. valoris. €',type:'number',ph:'0',w:'90px'},
   ]);
   const plafInfo=rows.length>0&&d.affectations?.length>0?'<div style="font-size:10.5px;color:var(--t40);padding:6px 14px;">Plafond légal 3× base interne (Art. 244 quater B, II-d)</div>':'';
-  if(!rows.length)return `<div class="twrap" style="margin:14px 24px;"><div class="thead2"><span class="ttitle">Prestations Ext.</span>${addBtn('Prestation',"document.getElementById('add-form-presta').style.display='flex'",'presta')}</div>${form}${emptyState('Aucune prestation externe.')}</div>`;
+  if(!rows.length)return `<div class="twrap" style="margin:14px 24px;"><div class="thead2"><span class="ttitle">Prestations Ext.</span>${addBtn('Prestation',"document.getElementById('add-form-presta').style.display='flex';SS.registerForDossier('${d.id}')",'presta')}</div>${form}${emptyState('Aucune prestation externe.')}</div>`;
   return `<div class="twrap" style="margin:14px 24px;">
     <div class="thead2"><span class="ttitle">Prestations Extérieures</span><div style="display:flex;gap:8px;"><span class="tcount">${rows.length}</span>${addBtn('Prestation',"document.getElementById('add-form-presta').style.display='flex'",'presta')}</div></div>
     ${form}${plafInfo}
@@ -3018,6 +3389,13 @@ function renderPrestaTab(d){
 function renderSubvTab(d){
   const rows=d.subventions||[];
   buildDatalistsForClient(d.clientId,'subv');
+  window['npFill_subv']=(data)=>{
+    const f=(id,v)=>{const el=document.getElementById(id);if(el&&v!=null)el.value=v;};
+    f('af-nom',data.intitule||data.nom||'');f('af-org',data.organisme||'');
+    f('af-proj',data.projet||'');f('af-aide',data.aide||0);
+    const st=document.getElementById('af-type');if(st&&data.type_sub)st.value=data.type_sub;
+    document.getElementById('add-form-subv').style.display='flex';
+  };
   const form=addFormHtml('subv',[
     {id:'nom',label:'Intitulé',ph:"I'NOV BPI",w:'130px',dl:'subv-dl-intit'},
     {id:'org',label:'Organisme',ph:'BPI France',w:'110px',dl:'subv-dl-org'},
@@ -3025,7 +3403,7 @@ function renderSubvTab(d){
     {id:'proj',label:'Projet',ph:'Projet R&D',w:'110px',dl:'subv-dl-proj'},
     {id:'aide',label:'Aide déductible €',type:'number',ph:'0',w:'100px'},
   ]);
-  if(!rows.length)return `<div class="twrap" style="margin:14px 24px;"><div class="thead2"><span class="ttitle">Subventions & Aides</span>${addBtn('Subvention',"document.getElementById('add-form-subv').style.display='flex'",'subv')}</div>${form}<div style="padding:6px 14px;font-size:10.5px;color:var(--t40);">Les aides publiques sont déduites de l\'assiette CI (Art. 244 quater B, III)</div>${emptyState('Aucune subvention.')}</div>`;
+  if(!rows.length)return `<div class="twrap" style="margin:14px 24px;"><div class="thead2"><span class="ttitle">Subventions & Aides</span>${addBtn('Subvention',"document.getElementById('add-form-subv').style.display='flex';SS.registerForDossier('${d.id}')",'subv')}</div>${form}<div style="padding:6px 14px;font-size:10.5px;color:var(--t40);">Les aides publiques sont déduites de l\'assiette CI (Art. 244 quater B, III)</div>${emptyState('Aucune subvention.')}</div>`;
   return `<div class="twrap" style="margin:14px 24px;">
     <div class="thead2"><span class="ttitle">Subventions & Aides Publiques</span><div style="display:flex;gap:8px;"><span class="tcount">${rows.length}</span>${addBtn('Subvention',"document.getElementById('add-form-subv').style.display='flex'",'subv')}</div></div>
     ${form}
@@ -3302,13 +3680,22 @@ function pers_add(did){
   const ch=parseFloat(document.getElementById('af-charges')?.value)||0;
   const chv=parseFloat(document.getElementById('af-charges_vol')?.value)||0;
   const jA=parseFloat(document.getElementById('af-tps')?.value)||218;
-  STORE.addRow(did,'personnel',{
-    nom,diplome:document.getElementById('af-diplome')?.value||'',
+  const _pid=npGetPageId('pers');
+  const _row={nom,diplome:document.getElementById('af-diplome')?.value||'',
     contrat:document.getElementById('af-contrat')?.value||'CDI',
     categorie:document.getElementById('af-diplomecat')?.value||'A',
     charges_vol:chv,salaire_brut:sal,charges_sociales:ch,
-    tps_travailles:jA,taux_journalier:jA>0?Math.round((sal+ch)/jA*100)/100:0
-  });
+    tps_travailles:jA,taux_journalier:jA>0?Math.round((sal+ch)/jA*100)/100:0};
+  if(_pid){
+    const _idx=(d.personnel||[]).findIndex(p=>p.notionPageId===_pid);
+    if(_idx>=0) STORE.updateRow(did,'personnel',_idx,{...d.personnel[_idx],..._row,notionPageId:_pid});
+    else STORE.addRow(did,'personnel',{..._row,notionPageId:_pid});
+    npClear('pers');
+  } else {
+    const _ei=(d.personnel||[]).findIndex(p=>p.nom===_row.nom);
+    if(_ei>=0) STORE.updateRow(did,'personnel',_ei,{...d.personnel[_ei],..._row});
+    else STORE.addRow(did,'personnel',_row);
+  }
   // Validation : jours P1+P2 ne doivent pas dépasser les jours annuels
   const jAnnuels = parseFloat(document.getElementById('af-tps')?.value)||218;
   const d2 = STORE.dossiers[did];
@@ -3338,16 +3725,20 @@ function aff_add(did){
     periode2025='P2 — 15 fév.→Déc. (FF 40%)';
   else
     periode2025=document.getElementById('af-aff-periode2025')?.value||'';
-  STORE.addRow(did,'affectations',{
-    nom,
-    projet:document.getElementById('af-proj')?.value||'',
-    taux,
-    tps_passes:tpsProj,
-    tps_eligibles:tpsVal,
-    depenses_engagees:depEng,
-    depenses_valorisables:depVal,
-    periode_2025:periode2025,
-  });
+  const _pidA=npGetPageId('aff');
+  const _rowA={nom,projet:document.getElementById('af-proj')?.value||'',
+    taux,tps_passes:tpsProj,tps_eligibles:tpsVal,
+    depenses_engagees:depEng,depenses_valorisables:depVal,periode_2025:periode2025};
+  if(_pidA){
+    const _idx=(d.affectations||[]).findIndex(a=>a.notionPageId===_pidA);
+    if(_idx>=0) STORE.updateRow(did,'affectations',_idx,{...d.affectations[_idx],..._rowA,notionPageId:_pidA});
+    else STORE.addRow(did,'affectations',{..._rowA,notionPageId:_pidA});
+    npClear('aff');
+  } else {
+    const _eiA=(d.affectations||[]).findIndex(a=>a.nom===_rowA.nom&&a.projet===_rowA.projet);
+    if(_eiA>=0) STORE.updateRow(did,'affectations',_eiA,{...d.affectations[_eiA],..._rowA});
+    else STORE.addRow(did,'affectations',_rowA);
+  }
   renderDossierView(document.getElementById('ci-content'));toast('Affectation ajoutée ✓');
 }
 
@@ -3526,6 +3917,146 @@ function persP1P2Preview(){
   if(p2) p2.textContent=j2>0?Math.round((s2+c2)/j2)+' €/j':'—';
 }
 
+
+// ── Notion Picker : sélection d'une entrée existante ──────────────
+function npBuild(formId, items){
+  const wrapId='np-'+formId+'-wrap';
+  let wrap=document.getElementById(wrapId);
+  if(!wrap){
+    const form=document.getElementById('add-form-'+formId);
+    if(!form) return;
+    wrap=document.createElement('div');
+    wrap.id=wrapId;
+    wrap.style.cssText='width:100%;margin-bottom:10px;padding:8px 10px;background:rgba(24,0,255,.06);border:1px solid rgba(24,0,255,.2);border-radius:var(--r-sm);position:relative;';
+    form.insertBefore(wrap, form.firstChild);
+  }
+  wrap._npItems=items;
+  wrap.innerHTML=`
+    <div style='font-size:9px;font-weight:800;text-transform:uppercase;letter-spacing:.12em;color:#8899FF;margin-bottom:5px;'>&#x1F50D; Charger une entrée existante</div>
+    <div style='display:flex;gap:6px;align-items:center;'>
+      <input id='np-${formId}-q' placeholder='Rechercher par mot-clé…' autocomplete='off'
+        style='flex:1;background:var(--t08);border:1px solid rgba(24,0,255,.25);border-radius:4px;padding:4px 8px;font-family:var(--font);font-size:12px;color:#fff;outline:none;'
+        oninput="npFilter('${formId}')" onfocus="npShow('${formId}')">
+      <button class='btn btn-ghost btn-sm' style='font-size:9px;padding:2px 7px;' onclick="npClear('${formId}')">✕</button>
+    </div>
+    <div id='np-${formId}-list' style='display:none;position:absolute;z-index:100;left:0;right:0;max-height:180px;overflow-y:auto;border:1px solid rgba(24,0,255,.3);border-radius:4px;background:#0d1042;box-shadow:0 8px 24px rgba(0,0,0,.4);margin-top:2px;'></div>
+    <input type='hidden' id='np-${formId}-pid'>
+    <div id='np-${formId}-sel' style='display:none;font-size:10px;color:#8899FF;margin-top:3px;'></div>
+  `;
+}
+
+function npFilter(formId){
+  const wrap=document.getElementById('np-'+formId+'-wrap');
+  if(!wrap||!wrap._npItems) return;
+  const q=(document.getElementById('np-'+formId+'-q')?.value||'').toLowerCase().trim();
+  const filtered=q?wrap._npItems.filter(it=>(it.label+' '+(it.sub||'')).toLowerCase().includes(q)):wrap._npItems;
+  const lst=document.getElementById('np-'+formId+'-list');
+  if(!lst) return;
+  if(!filtered.length){ lst.style.display='none'; return; }
+  lst.style.display='block';
+  lst.innerHTML='';
+  filtered.slice(0,25).forEach(it=>{
+    const el=document.createElement('div');
+    el.style.cssText='padding:6px 10px;cursor:pointer;border-bottom:1px solid rgba(255,255,255,.06);font-size:12px;';
+    el.innerHTML=`<div style='font-weight:600;'>${esc(it.label)}</div>${it.sub?`<div style='font-size:10px;color:var(--t40);'>${esc(it.sub)}</div>`:''}${it.notionPageId?`<div style='font-size:9px;color:rgba(100,130,255,.6);'>Notion: ${it.notionPageId.slice(0,8)}…</div>`:''}`;
+    el.onmouseover=()=>el.style.background='rgba(24,0,255,.15)';
+    el.onmouseout=()=>el.style.background='';
+    el.onclick=()=>npSelectItem(formId,it);
+    lst.appendChild(el);
+  });
+}
+
+function npShow(formId){
+  const wrap=document.getElementById('np-'+formId+'-wrap');
+  if(!wrap||!wrap._npItems||!wrap._npItems.length) return;
+  npFilter(formId);
+}
+
+function npSelectItem(formId, item){
+  if(!item) return;
+  const pid=document.getElementById('np-'+formId+'-pid');
+  if(pid) pid.value=item.notionPageId||'';
+  const selEl=document.getElementById('np-'+formId+'-sel');
+  if(selEl){ selEl.textContent='✓ '+item.label+(item.notionPageId?' (Notion — mise à jour)':' (local)'); selEl.style.display='block'; }
+  const qEl=document.getElementById('np-'+formId+'-q');
+  if(qEl) qEl.value=item.label;
+  const lst=document.getElementById('np-'+formId+'-list');
+  if(lst) lst.style.display='none';
+  if(typeof window['npFill_'+formId]==='function') window['npFill_'+formId](item.data);
+}
+
+function npClear(formId){
+  const pid=document.getElementById('np-'+formId+'-pid'); if(pid) pid.value='';
+  const qEl=document.getElementById('np-'+formId+'-q'); if(qEl) qEl.value='';
+  const selEl=document.getElementById('np-'+formId+'-sel'); if(selEl) selEl.style.display='none';
+  const lst=document.getElementById('np-'+formId+'-list'); if(lst) lst.style.display='none';
+}
+
+function npGetPageId(formId){
+  const v=document.getElementById('np-'+formId+'-pid')?.value||'';
+  if(v) return v;
+  const fieldMap={pers:'af-nom',aff:'af-nom',amort:'af-lib',presta:'af-nom',subv:'af-nom'};
+  const ssId=fieldMap[formId];
+  if(ssId){
+    const pid=document.getElementById('ss-pid-'+ssId)?.value||'';
+    if(pid) return pid;
+  }
+  return '';
+}
+
+function npBuildItems(field, clientId, did){
+  const items=[];
+  const seen=new Set();
+  const add=(label,sub,notionPageId,data)=>{
+    const k=label+(notionPageId||'');
+    if(seen.has(k)) return; seen.add(k);
+    items.push({label,sub,notionPageId:notionPageId||'',data});
+  };
+  const dids=STORE.clientDossierIds(clientId);
+  if(field==='personnel'){
+    // Toutes les lignes personnel du client (cross-dossiers)
+    const sg=getClientSuggestions(clientId);
+    sg.personnel.forEach(p=>add(
+      p.nom||'?',
+      [p.contrat||'',p.categorie?'Cat.'+p.categorie:'',p.salaire_brut?p.salaire_brut+'€':''].filter(Boolean).join(' · '),
+      p.notionPageId,p
+    ));
+  } else if(field==='affectations'){
+    dids.forEach(d2id=>{
+      (STORE.dossiers[d2id]?.affectations||[]).forEach(a=>add(
+        a.nom||'?',
+        [a.projet||'',a.taux?a.taux+'€/j':'',a.periode_2025?(a.periode_2025.split('—')[0]||'').trim():''].filter(Boolean).join(' · '),
+        a.notionPageId,a
+      ));
+    });
+  } else if(field==='amortissements'){
+    dids.forEach(d2id=>{
+      (STORE.dossiers[d2id]?.amortissements||[]).forEach(a=>add(
+        a.libelle||a.denomination||'?',
+        [a.projet||'',a.amort_periode?a.amort_periode+'€':''].filter(Boolean).join(' · '),
+        a.notionPageId,a
+      ));
+    });
+  } else if(field==='prestations'){
+    dids.forEach(d2id=>{
+      (STORE.dossiers[d2id]?.prestations||[]).forEach(p=>add(
+        p.sous_traitant||p.nom||'?',
+        [p.projet||'',p.montant_facture?p.montant_facture+'€':''].filter(Boolean).join(' · '),
+        p.notionPageId,p
+      ));
+    });
+  } else if(field==='subventions'){
+    dids.forEach(d2id=>{
+      (STORE.dossiers[d2id]?.subventions||[]).forEach(s=>add(
+        s.intitule||s.nom||'?',
+        [s.organisme||'',s.aide?s.aide+'€':''].filter(Boolean).join(' · '),
+        s.notionPageId,s
+      ));
+    });
+  }
+  return items;
+}
+
 function affMfCalc(){
   const sal=parseFloat(document.getElementById('aff-mf-sal')?.value)||0;
   const ch=parseFloat(document.getElementById('aff-mf-ch')?.value)||0;
@@ -3589,34 +4120,59 @@ function amort_add(did){
   const cout=parseFloat(document.getElementById('af-cout')?.value)||0;
   const pct=(parseFloat(document.getElementById('af-pct')?.value)||100)/100;
   const amp=parseFloat(document.getElementById('af-amp')?.value)||0;
-  STORE.addRow(did,'amortissements',{
-    libelle:lib,projet:document.getElementById('af-proj')?.value||'',
+  const _pidAm=npGetPageId('amort');
+  const _rowAm={libelle:lib,projet:document.getElementById('af-proj')?.value||'',
     cout,duree:parseFloat(document.getElementById('af-dur')?.value)||0,
-    amort_periode:amp,taux_affectation:pct*100,
-    depenses_valorisables:Math.round(amp*pct*100)/100,
-  });
+    amort_periode:amp,taux_affectation:pct*100,depenses_valorisables:Math.round(amp*pct*100)/100};
+  if(_pidAm){
+    const _idx=(STORE.dossiers[did]?.amortissements||[]).findIndex(a=>a.notionPageId===_pidAm);
+    if(_idx>=0) STORE.updateRow(did,'amortissements',_idx,{...STORE.dossiers[did].amortissements[_idx],..._rowAm,notionPageId:_pidAm});
+    else STORE.addRow(did,'amortissements',{..._rowAm,notionPageId:_pidAm});
+    npClear('amort');
+  } else {
+    const _eiAm=(STORE.dossiers[did]?.amortissements||[]).findIndex(a=>(a.libelle||a.denomination)===_rowAm.libelle);
+    if(_eiAm>=0) STORE.updateRow(did,'amortissements',_eiAm,{...STORE.dossiers[did].amortissements[_eiAm],..._rowAm});
+    else STORE.addRow(did,'amortissements',_rowAm);
+  }
   renderDossierView(document.getElementById('ci-content'));toast('Amortissement ajouté');
 }
 function presta_add(did){
   const nom=document.getElementById('af-nom')?.value.trim();if(!nom)return;
   const mt=parseFloat(document.getElementById('af-mt')?.value)||0;
   const dep=parseFloat(document.getElementById('af-dep')?.value)||mt;
-  STORE.addRow(did,'prestations',{
-    sous_traitant:nom,siren:document.getElementById('af-siren')?.value||'',
+  const _pidPr=npGetPageId('presta');
+  const _rowPr={sous_traitant:nom,siren:document.getElementById('af-siren')?.value||'',
     public_prive:document.getElementById('af-pp')?.value||'Privé',
-    projet:document.getElementById('af-proj')?.value||'',
-    montant_facture:mt,depenses_valorisables:dep,
-  });
+    projet:document.getElementById('af-proj')?.value||'',montant_facture:mt,depenses_valorisables:dep};
+  if(_pidPr){
+    const _idx=(STORE.dossiers[did]?.prestations||[]).findIndex(p=>p.notionPageId===_pidPr);
+    if(_idx>=0) STORE.updateRow(did,'prestations',_idx,{...STORE.dossiers[did].prestations[_idx],..._rowPr,notionPageId:_pidPr});
+    else STORE.addRow(did,'prestations',{..._rowPr,notionPageId:_pidPr});
+    npClear('presta');
+  } else {
+    const _eiPr=(STORE.dossiers[did]?.prestations||[]).findIndex(p=>p.sous_traitant===_rowPr.sous_traitant);
+    if(_eiPr>=0) STORE.updateRow(did,'prestations',_eiPr,{...STORE.dossiers[did].prestations[_eiPr],..._rowPr});
+    else STORE.addRow(did,'prestations',_rowPr);
+  }
   renderDossierView(document.getElementById('ci-content'));toast('Prestation ajoutée');
 }
 function subv_add(did){
   const nom=document.getElementById('af-nom')?.value.trim();if(!nom)return;
-  STORE.addRow(did,'subventions',{
-    intitule:nom,organisme:document.getElementById('af-org')?.value||'',
+  const _pidSv=npGetPageId('subv');
+  const _rowSv={intitule:nom,organisme:document.getElementById('af-org')?.value||'',
     type_sub:document.getElementById('af-type')?.value||'Subvention',
     projet:document.getElementById('af-proj')?.value||'',
-    aide:parseFloat(document.getElementById('af-aide')?.value)||0,
-  });
+    aide:parseFloat(document.getElementById('af-aide')?.value)||0};
+  if(_pidSv){
+    const _idx=(STORE.dossiers[did]?.subventions||[]).findIndex(s=>s.notionPageId===_pidSv);
+    if(_idx>=0) STORE.updateRow(did,'subventions',_idx,{...STORE.dossiers[did].subventions[_idx],..._rowSv,notionPageId:_pidSv});
+    else STORE.addRow(did,'subventions',{..._rowSv,notionPageId:_pidSv});
+    npClear('subv');
+  } else {
+    const _eiSv=(STORE.dossiers[did]?.subventions||[]).findIndex(s=>(s.intitule||s.nom)===_rowSv.intitule);
+    if(_eiSv>=0) STORE.updateRow(did,'subventions',_eiSv,{...STORE.dossiers[did].subventions[_eiSv],..._rowSv});
+    else STORE.addRow(did,'subventions',_rowSv);
+  }
   renderDossierView(document.getElementById('ci-content'));toast('Subvention ajoutée');
 }
 
@@ -3739,6 +4295,16 @@ function ciNewDossier(clientId){
       </div>
       <input type="hidden" id="nd-disp" value="CIR">
     </div>
+    <div style="margin-bottom:14px;">
+      <div style="font-size:9px;font-weight:800;text-transform:uppercase;letter-spacing:.12em;color:var(--t40);margin-bottom:5px;">Lead</div>
+      <div style="display:flex;gap:7px;">
+        <button class="btn btn-ghost" id="nd-lead-Paul" style="flex:1;" onclick="ndSelectLead('Paul')">Paul</button>
+        <button class="btn btn-ghost" id="nd-lead-Guillaume" style="flex:1;" onclick="ndSelectLead('Guillaume')">Guillaume</button>
+        <button class="btn btn-ghost" id="nd-lead-Axel" style="flex:1;" onclick="ndSelectLead('Axel')">Axel</button>
+        <button class="btn btn-ghost" id="nd-lead-Lucile" style="flex:1;" onclick="ndSelectLead('Lucile')">Lucile</button>
+      </div>
+      <input type="hidden" id="nd-lead" value="">
+    </div>
     <div style="display:grid;grid-template-columns:1fr 1fr;gap:12px;margin-bottom:18px;">
       <div>
         <div style="font-size:9px;font-weight:800;text-transform:uppercase;letter-spacing:.12em;color:var(--t40);margin-bottom:5px;">Année fiscale</div>
@@ -3768,6 +4334,16 @@ function ciNewDossier(clientId){
   // Keyboard
   overlay.addEventListener('keydown',e=>{if(e.key==='Escape')overlay.remove();if(e.key==='Enter')ciNewDossierConfirm(clientId);});
 }
+function ndSelectLead(lead){
+  document.getElementById('nd-lead').value=lead;
+  const colors={'Paul':'var(--blue)','Guillaume':'#534AB7','Axel':'var(--green)','Lucile':'var(--pink)'};
+  ['Paul','Guillaume','Axel','Lucile'].forEach(l=>{
+    const btn=document.getElementById('nd-lead-'+l);if(!btn)return;
+    if(l===lead){btn.style.background=colors[l];btn.style.color='#fff';btn.style.borderColor=colors[l];}
+    else{btn.style.background='';btn.style.color='';btn.style.borderColor='';}
+  });
+}
+
 function ndSelect(disp){
   document.getElementById('nd-disp').value=disp;
   ['CIR','CII','CICO'].forEach(d=>{
@@ -3795,9 +4371,42 @@ function ciNewDossierConfirm(clientId){
   }
   document.getElementById('ci-new-dos-overlay')?.remove();
   const did=STORE.addDossier(clientId,disp,annee,exercice);
+  const lead2=document.getElementById('nd-lead')?.value||'';
+  if(did&&lead2&&STORE.dossiers[did]){
+    STORE.dossiers[did].lead=lead2;STORE._saveLocal();
+  }
   ciNav('dossier',clientId,did);
-  toast('Dossier '+disp+' '+annee+' créé ✓');
+  const _clientName=STORE.clients[clientId]?.name||clientId;
+  toast(_clientName+' — '+disp+' '+annee+' créé ✓');
 }
+function dosEditLead(did){
+  const d=STORE.dossiers[did];if(!d)return;
+  document.getElementById('dos-lead-popup')?.remove();
+  const pop=document.createElement('div');
+  pop.id='dos-lead-popup';
+  pop.style.cssText='position:fixed;top:50%;left:50%;transform:translate(-50%,-50%);background:var(--navy-card);border:1px solid var(--border2);border-radius:var(--r-lg);padding:18px 20px;z-index:500;box-shadow:var(--sh-lg);min-width:280px;';
+  const colors={Paul:'var(--blue)',Guillaume:'#534AB7',Axel:'var(--green)',Lucile:'var(--pink)'};
+  pop.innerHTML='<div style="font-size:11px;font-weight:800;text-transform:uppercase;letter-spacing:.1em;color:var(--t40);margin-bottom:12px;">👤 Lead du dossier</div>'
+    +'<div style="display:grid;grid-template-columns:1fr 1fr;gap:7px;">'
+    +['Paul','Guillaume','Axel','Lucile'].map(l=>
+      `<button class="btn btn-ghost" style="${d.lead===l?'background:'+colors[l]+';color:#fff;border-color:'+colors[l]+';':''}" onclick="dosSaveLead('${did}','${l}')">${l}</button>`
+    ).join('')
+    +'</div>'
+    +'<div style="margin-top:10px;display:flex;gap:7px;">'
+    +'<button class="btn btn-ghost btn-sm" style="flex:1;" onclick="dosSaveLead(\''+did+'\',\'\')">✕ Retirer le lead</button>'
+    +'<button class="btn btn-ghost btn-sm" onclick="document.getElementById(\'dos-lead-popup\')?.remove()">✕ Annuler</button>'
+    +'</div>';
+  document.body.appendChild(pop);
+  document.addEventListener('keydown',function escLead(e){if(e.key==='Escape'){pop.remove();document.removeEventListener('keydown',escLead);}},true);
+}
+function dosSaveLead(did,lead){
+  const d=STORE.dossiers[did];if(!d)return;
+  d.lead=lead;STORE._saveLocal();
+  document.getElementById('dos-lead-popup')?.remove();
+  tabRefresh();
+  if(lead) toast('👤 Lead : '+lead+' ✓');
+}
+
 function ciDeleteClient(id){
   if(!confirm('Supprimer '+id+' et tous ses dossiers ?'))return;
   STORE.removeClient(id);ciNav('portfolio');renderCISidebar();toast('Client supprimé','warn');
@@ -4563,6 +5172,9 @@ const PIL = {
       </div>`:''}
       <div class="pil-body" id="pil-body">${this._tabContent()}</div>
     </div>`;
+    setTimeout(()=>{document.querySelectorAll('[id$="-picker"]').forEach(p=>{
+      if(p.parentElement&&p.parentElement!==document.body)document.body.appendChild(p);
+    });},10);
   },
 
   setTab(t){this.state.tab=t;this.state.editItem=null;this.state.newItem=null;this.state.openDetail=null;this.render();},
@@ -4591,7 +5203,11 @@ const PIL = {
         notionAPI.loadPilotage()
       ]);
       this.state.loading=false;this.state.error=null;
-    }catch(e){this.state.loading=false;this.state.error=e.message;}
+      const nLv=STORE.notion.livrables?.length||0;
+      const nRu=STORE.notion.reunions?.length||0;
+      const nCl=Object.keys(STORE.clients).length;
+      if(nLv||nRu||nCl) toast('✓ Sync OK — '+nCl+' clients � '+nLv+' livrables � '+nRu+' réunions','ok');
+    }catch(e){this.state.loading=false;this.state.error=e.message;toast('⚠ Erreur sync: '+e.message,'warn');}
     this.render();
     if(typeof renderSidebar==='function')renderSidebar();
     if(typeof renderOverview==='function'&&_curPanel==='overview')renderOverview();
@@ -4609,10 +5225,12 @@ const PIL = {
 
   _livFields:()=>[
     {key:'nom',label:'Titre',type:'text',w:'200px'},
+    {key:'societe',label:'Société',type:'societe-search',w:'200px'},
     {key:'statut',label:'Statut',type:'select',opts:['À faire','En cours','En attente','À valider','Terminé','Annulé'],w:'120px'},
     {key:'priorite',label:'Priorité',type:'select',opts:['Haute','Moyenne','Basse'],w:'100px'},
     {key:'deadline',label:'Deadline',type:'date',w:'130px'},
     {key:'responsable',label:'Responsable',type:'text',w:'120px'},
+    {key:'lead',label:'Lead',type:'select',opts:['Paul','Guillaume','Axel','Lucile'],w:'120px'},
     {key:'rel_dossiers',label:'Dossiers CI liés',type:'relations',w:'220px',createIn:'dossiers',
       getItems:()=>Object.values(STORE.dossiers).map(d=>{
         const cn=STORE.clients[d.clientId]?.name||d.clientId;
@@ -4623,9 +5241,11 @@ const PIL = {
   ],
   _reuFields:()=>[
     {key:'nom',label:'Titre',type:'text',w:'200px'},
+    {key:'societe',label:'Société',type:'societe-search',w:'200px'},
     {key:'date',label:'Date',type:'date',w:'130px'},
     {key:'statut',label:'Statut',type:'select',opts:['Planifiée','Réalisée','À valider','Annulée'],w:'120px'},
     {key:'priorite',label:'Priorité',type:'select',opts:['Haute','Moyenne','Basse'],w:'100px'},
+    {key:'lead',label:'Lead',type:'select',opts:['Paul','Guillaume','Axel','Lucile'],w:'120px'},
     {key:'rel_livrables',label:'Livrables liés',type:'relations',w:'220px',createIn:'livrables',
       getItems:()=>(STORE.notion.livrables||[]).map(l=>({id:l.id||l.nom,label:l.nom||'?'}))},
     {key:'rel_dossiers',label:'Dossiers CI liés',type:'relations',w:'220px',createIn:'dossiers',
@@ -4653,25 +5273,54 @@ const PIL = {
 
   _rf(f,val,prefix){
     const v=val||'';
+    // Societe-search : champ texte live (relation 1-1) via SmartSelect
+    if(f.type==='societe-search'){
+      const ssId=prefix+'-'+f.key;
+      const curVal=(()=>{
+        const ids=[].concat(v||[]);
+        if(!ids.length) return '';
+        const c=Object.values(STORE.clients).find(c=>c.notionPageId===ids[0]||c.id===ids[0]);
+        return c?c.name:(typeof ids[0]==='string'?ids[0]:'');
+      })();
+      // Handlers inline = survivent au re-render innerHTML de PIL
+      return '<div style="display:inline-block;width:'+f.w+';position:relative;">'
+        +'<input id="'+ssId+'" type="text" value="'+esc(curVal)+'"'
+        +' placeholder="Rechercher ou cr\u00e9er\u2026"'
+        +' style="width:100%;background:var(--t08);border:1px solid rgba(0,255,156,.2);border-radius:4px;padding:4px 8px;font-family:var(--font);font-size:11.5px;color:#fff;outline:none;"'
+        +' autocomplete="off"'
+        +' oninput="SS.openSoc(\''+ssId+'\')"'
+        +' onfocus="SS.openSoc(\''+ssId+'\')"'
+        +' onkeydown="SS._key(\''+ssId+'\',event)">'
+        +'</div>';
+    }
     if(f.type==='relations'){
       const relItems=f.getItems?.()??[];
       const curIds=[].concat(v||[]);
       const pickerId=prefix+'-'+f.key+'-picker';
       const hiddenId=prefix+'-'+f.key;
+      // Tags selectionnes
+      const selTags=curIds.map(id=>{
+        const it=relItems.find(r=>r.id===id);
+        return it?'<span style="display:inline-flex;align-items:center;gap:3px;background:rgba(0,255,156,.15);color:var(--green);border:1px solid rgba(0,255,156,.25);padding:2px 7px;border-radius:3px;font-size:10px;">'+esc(it.label)+'<span style="cursor:pointer;opacity:.6;" onmousedown="event.stopPropagation();PIL._removeRelTag(\'' + hiddenId + '\',\'' + esc(id) + '\',event)">×</span></span>':'';
+      }).join('');
       return `<div id="${prefix}-${f.key}-wrap" style="position:relative;display:inline-block;width:${f.w||'220px'};">
-        <div style="background:var(--t08);border:1px solid rgba(0,255,156,.2);border-radius:4px;padding:4px 8px;cursor:pointer;font-size:11.5px;min-height:28px;display:flex;flex-wrap:wrap;gap:3px;color:#fff;width:${f.w||'220px'};"
-          onclick="PIL._togglePicker('${pickerId}','${hiddenId}')">
-          ${curIds.length?curIds.map(id=>{const it=relItems.find(r=>r.id===id);return it?`<span style="background:rgba(0,255,156,.15);color:var(--green);border:1px solid rgba(0,255,156,.25);padding:1px 6px;border-radius:3px;font-size:10px;">${esc(it.label)}</span>`:''}).join(''):'<span style="color:var(--t40);font-size:11px;">Lier…</span>'}
+        <div style="background:var(--t08);border:1px solid rgba(0,255,156,.2);border-radius:4px;padding:3px 6px;min-height:30px;display:flex;flex-wrap:wrap;gap:3px;align-items:center;cursor:text;" onclick="document.getElementById('${pickerId}-q')?.focus();PIL._openPicker('${pickerId}','${hiddenId}')">
+          ${selTags}
+          <input id="${pickerId}-q" type="text" placeholder="${curIds.length?'':'+ Lier\u2026'}"
+            style="border:none;background:transparent;outline:none;font-family:var(--font);font-size:11.5px;color:#fff;flex:1;min-width:80px;padding:2px 4px;"
+            autocomplete="off"
+            oninput="PIL._filterPicker(document.getElementById('${pickerId}-q'),'${pickerId}')"
+            onfocus="PIL._openPicker('${pickerId}','${hiddenId}')">
         </div>
-        <div id="${pickerId}" style="display:none;position:absolute;top:100%;left:0;z-index:200;background:var(--navy-card);border:1px solid var(--border2);border-radius:var(--r-sm);box-shadow:var(--sh-lg);padding:6px;min-width:240px;max-height:200px;overflow-y:auto;">
-          <input type="text" placeholder="Rechercher…" style="width:100%;background:var(--t08);border:1px solid var(--border);border-radius:4px;padding:4px 8px;font-family:var(--font);font-size:11px;color:#fff;outline:none;margin-bottom:5px;"
-            oninput="PIL._filterPicker(this,'${pickerId}')">
-          ${relItems.map(it=>`<label style="display:flex;align-items:center;gap:7px;padding:5px 6px;border-radius:4px;cursor:pointer;font-size:12px;color:#fff;">
-            <input type="checkbox" data-rel-id="${esc(it.id)}" data-rel-group="${hiddenId}" ${curIds.includes(it.id)?'checked':''} style="accent-color:var(--green);">
-            <span>${esc(it.label)}</span>
+        <div id="${pickerId}" style="display:none;position:fixed;z-index:99998;background:var(--navy-card);border:1px solid var(--border2);border-radius:var(--r-sm);box-shadow:var(--sh-lg);padding:6px;min-width:260px;max-height:240px;overflow-y:auto;">
+          ${relItems.map(it=>`<label style="display:flex;align-items:center;gap:7px;padding:6px 8px;border-radius:4px;cursor:pointer;font-size:12px;color:#fff;" onmouseover="this.style.background='rgba(24,0,255,.15)'" onmouseout="this.style.background=''">
+            <input type="checkbox" data-rel-id="${esc(it.id)}" data-rel-group="${hiddenId}" ${curIds.includes(it.id)?'checked':''}
+              style="accent-color:var(--green);flex-shrink:0;"
+              onchange="PIL._onCheckChange(this,'${hiddenId}','${prefix}-${f.key}-wrap')">
+            <span style="flex:1;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;">${esc(it.label)}</span>
           </label>`).join('')}
-          <button style="width:100%;margin-top:5px;padding:5px 8px;font-size:10.5px;background:rgba(24,0,255,.12);border:1px solid rgba(24,0,255,.2);border-radius:4px;color:var(--blue);cursor:pointer;text-align:left;font-family:var(--font);"
-            onclick="PIL._createInPicker('${prefix}-${f.key}','${esc(f.createIn||'')}')">＋ Créer un nouveau…</button>
+          ${relItems.length===0?'<div style="padding:10px;text-align:center;color:var(--t40);font-size:11px;">Aucun \u00e9l\u00e9ment</div>':''}
+          <button style="width:100%;margin-top:6px;padding:6px 8px;font-size:10.5px;background:rgba(24,0,255,.12);border:1px solid rgba(24,0,255,.2);border-radius:4px;color:var(--blue);cursor:pointer;text-align:left;font-family:var(--font);" onmousedown="PIL._createInPicker('${prefix}-${f.key}','${esc(f.createIn||'')}')">➕ Créer un nouveau…</button>
         </div>
         <input type="hidden" id="${hiddenId}" value="${esc(JSON.stringify(curIds))}">
       </div>`;
@@ -4685,9 +5334,22 @@ const PIL = {
     const obj={};
     fields.forEach(f=>{
       if(f.type==='date'){obj[f.key]=CalPicker.val(prefix+'-'+f.key+'_date');return;}
+      if(f.type==='societe-search'){
+        const ssId=prefix+'-'+f.key;
+        const id=SS.getSocId(ssId);
+        obj[f.key]=id?[id]:[];
+        return;
+      }
       if(f.type==='relations'){
         const el=document.getElementById(prefix+'-'+f.key);
-        try{obj[f.key]=JSON.parse(el?.value||'[]');}catch{obj[f.key]=[];}
+        let ids=[];try{ids=JSON.parse(el?.value||'[]');}catch{ids=[];}
+        if(!ids.length){
+          const pk=document.getElementById(prefix+'-'+f.key+'-picker');
+          if(pk)ids=[...pk.querySelectorAll('input[type=checkbox]:checked')].map(c=>c.dataset.relId).filter(Boolean);
+          const bc=document.getElementById('ssrl-'+prefix+'-'+f.key);
+          if(bc&&!ids.length)try{ids=JSON.parse(bc.value||'[]');}catch{}
+        }
+        obj[f.key]=ids;
         return;
       }
       const el=document.getElementById(prefix+'-'+f.key);if(!el)return;
@@ -4715,9 +5377,11 @@ const PIL = {
         <div class="pil-item" style="border:none;margin:0;border-radius:0;cursor:pointer;" onclick="PIL.toggleDetail('${col}',${i})">
           <div style="width:16px;flex-shrink:0;color:var(--t40);font-size:10px;transition:transform .15s;transform:rotate(${isOpen?'90':'0'}deg);">▶</div>
           <div class="pil-item-info"><div class="pil-item-title">${esc(item.nom||item.titre||'—')}</div>
+              ${(()=>{ const _ids=[].concat(item.societe||item.societes||[]); const _names=_ids.map(id=>{const _c=Object.values(STORE.clients).find(c=>c.notionPageId===id||c.id===id);return _c?_c.name:'';}).filter(Boolean); return _names.length?`<div style='font-size:10px;color:var(--green);font-weight:600;margin-top:1px;'>\uD83C\uDFE2 ${esc(_names.join(', '))}</div>`:''})()}
             <div class="pil-item-sub" style="display:flex;align-items:center;gap:5px;margin-top:3px;">
               ${item.statut?`<span class="chip chip-muted" style="font-size:8.5px;">${esc(item.statut)}</span>`:''}
               ${item.priorite?`<span class="chip ${item.priorite==='Haute'?'chip-red':item.priorite==='Basse'?'chip-muted':'chip-gold'}" style="font-size:8.5px;">${item.priorite}</span>`:''}
+              ${item.lead?`<span style="font-size:8.5px;font-weight:700;padding:1px 6px;border-radius:99px;background:${{Paul:'rgba(55,138,221,.2)',Guillaume:'rgba(83,74,183,.2)',Axel:'rgba(0,255,156,.12)',Lucile:'rgba(249,21,117,.15)'}[item.lead]||'var(--t08)'};color:${{Paul:'#378ADD',Guillaume:'#8877EE',Axel:'var(--green)',Lucile:'var(--pink)'}[item.lead]||'var(--t60)'};">\uD83D\uDC64 ${esc(item.lead)}</span>`:''}
               ${dlTxt?`<span class="pil-deadline ${dlCls}" style="font-size:9.5px;font-weight:700;padding:2px 8px;">${item.deadline?new Date(item.deadline+' ').toLocaleDateString('fr-FR',{day:'2-digit',month:'short'})+' · ':''}<b>${dlTxt}</b></span>`:''}
               ${item.responsable?`<span style="font-size:10px;color:var(--t60);">👤 ${esc(item.responsable)}</span>`:''}
               ${item.probabilite!=null?`<span style="font-size:10px;color:var(--t60);">${item.probabilite}% · ${EUR(item.montant||0)}</span>`:''}
@@ -4741,7 +5405,7 @@ const PIL = {
       </div>
       ${totLine}
       ${isNew?fbar({},'pil-new','Créer',`PIL.saveNew('${col}')`,`PIL.cancelEdit()`):''}
-      <div class="pil-list-grid">${rows||`<div style="padding:20px;text-align:center;color:var(--ink-40,rgba(26,23,20,.4));">Aucun élément — créez-en un ou synchronisez Notion.</div>`}</div>
+      <div class="pil-list-grid">${rows||`<div style="padding:20px;text-align:center;color:var(--ink-40,rgba(26,23,20,.4));">Aucun élément — cliquez + Nouveau ou ↺ Notion</div>`}</div>
     </div>`;
   },
 
@@ -4751,6 +5415,12 @@ const PIL = {
 
   saveEdit(col,idx){
     const fields=this._fieldsFor(col);
+    fields.filter(f=>f.type==='relations').forEach(f=>{
+      const hid='pil-ed-'+f.key;
+      const hidden=document.getElementById(hid);
+      const pk=document.getElementById(hid+'-picker');
+      if(pk&&hidden){const ids=[...pk.querySelectorAll('input[type=checkbox]:checked')].map(c=>c.dataset.relId).filter(Boolean);if(ids.length)hidden.value=JSON.stringify(ids);}
+    });
     const updated=this._readForm('pil-ed',fields);
     const items=STORE.notion[col]||[];
     if(items[idx]){Object.assign(items[idx],updated);STORE.notion[col]=[...items];}
@@ -4763,11 +5433,23 @@ const PIL = {
     }
     try{localStorage.setItem('pdj_notion_'+col,JSON.stringify(STORE.notion[col]));}catch(e){}
     this._syncRelations(col, items[idx]||{});
-    this.state.editItem=null;this.render();toast('Mis à jour ✓');
+    this.state.editItem=null;
+    document.querySelectorAll('[id^="ss-pid-pil-ed-"]').forEach(h=>{if(h)h.value='';});
+    const _nm2=items[idx]?.nom||items[idx]?.titre||'';
+    this.render();
+    toast((_nm2?'"'+_nm2+'" ':'')+'mis à jour ✓');
     if(typeof renderSidebar==='function')renderSidebar();
   },
   saveNew(col){
     const fields=this._fieldsFor(col);
+    fields.filter(f=>f.type==='relations').forEach(f=>{
+      const hid='pil-new-'+f.key;
+      const hidden=document.getElementById(hid);
+      const pk=document.getElementById(hid+'-picker');
+      if(pk&&hidden){const ids=[...pk.querySelectorAll('input[type=checkbox]:checked')].map(c=>c.dataset.relId).filter(Boolean);if(ids.length)hidden.value=JSON.stringify(ids);}
+      const bc=document.getElementById('ssrl-'+hid);
+      if(bc&&hidden&&!JSON.parse(hidden.value||'[]').length)hidden.value=bc.value;
+    });
     const obj=this._readForm('pil-new',fields);
     if(!obj[fields[0]?.key]?.toString().trim()){toast('Titre requis','warn');return;}
     obj.id='local-'+Date.now();obj.nom=obj[fields[0].key]||'';
@@ -4779,7 +5461,11 @@ const PIL = {
       const dbId=notionAPI.dbIds[dbMap[col]];
       if(dbId){
         notionAPI.createPage(dbId,this._toProps(col,obj)).then(p=>{
-          if(p){obj.id=p.id;obj.url=p.url;}
+          if(p){
+            obj.id=p.id;obj.url=p.url;
+            try{localStorage.setItem('pdj_notion_'+col,JSON.stringify(STORE.notion[col]));}catch(e){}
+            toast('✓ '+(obj.nom||'Element')+' syncé dans Notion','ok');
+          }
         }).catch(e=>{
           const isCors=e?.message?.includes('Failed to fetch')||e?.name==='TypeError';
           if(isCors&&!notionAPI.proxyUrl)toast('⚠ CORS — proxy requis pour sync Notion','err');
@@ -4787,23 +5473,122 @@ const PIL = {
       }
     }
     try{localStorage.setItem('pdj_notion_'+col,JSON.stringify(STORE.notion[col]));}catch(e){}
-    this.state.newItem=null;this.render();toast('Créé ✓');
+    this.state.newItem=null;
+    document.querySelectorAll('[id^="ss-pid-pil-new-"]').forEach(h=>{if(h)h.value='';});
+    this.render();toast('Créé ✓');
     if(typeof renderSidebar==='function')renderSidebar();
   },
+  // Ouvrir le picker sans toggle (depuis onfocus / onclick)
+  _openPicker(pickerId,hiddenId){
+    const picker=document.getElementById(pickerId);if(!picker)return;
+    // Positionner
+    const wrap=document.getElementById(hiddenId+'-wrap');
+    if(wrap){const r=wrap.getBoundingClientRect();
+      picker.style.top=(r.bottom+2)+'px';
+      picker.style.left=r.left+'px';
+      picker.style.width=Math.max(r.width,260)+'px';}
+    picker.style.display='block';
+    // Fermer sur clic exterieur
+    setTimeout(()=>{
+      document.addEventListener('pointerdown',function _cp(e){
+        const pk=document.getElementById(pickerId);
+        const wp=document.getElementById(hiddenId+'-wrap');
+        if(!pk?.contains(e.target)&&!wp?.contains(e.target)){
+          if(pk)pk.style.display='none';
+          PIL._savePicker(pickerId,hiddenId);
+          document.removeEventListener('pointerdown',_cp,true);
+        }
+      },true);
+    },80);
+  },
+
+  // Sauvegarder les selections du picker dans le hidden
+  _savePicker(pickerId,hiddenId){
+    const picker=document.getElementById(pickerId);if(!picker)return;
+    const ids=[...picker.querySelectorAll('input[type=checkbox]:checked')].map(c=>c.dataset.relId).filter(Boolean);
+    const hidden=document.getElementById(hiddenId);
+    if(hidden)hidden.value=JSON.stringify(ids);
+    let bc=document.getElementById('ssrl-'+hiddenId);
+    if(!bc){bc=document.createElement('input');bc.type='hidden';bc.id='ssrl-'+hiddenId;document.body.appendChild(bc);}
+    bc.value=JSON.stringify(ids);
+    this._refreshPickerDisplay(hiddenId);
+  },
+
+  // Mise a jour live du hidden + tags quand on coche/decoche
+  _onCheckChange(checkbox,hiddenId,wrapId){
+    const picker=checkbox.closest('[id$="-picker"]');
+    if(!picker)return;
+    const ids=[...picker.querySelectorAll('input[type=checkbox]:checked')].map(c=>c.dataset.relId).filter(Boolean);
+    const hidden=document.getElementById(hiddenId);
+    if(hidden)hidden.value=JSON.stringify(ids);
+    let bc=document.getElementById('ssrl-'+hiddenId);
+    if(!bc){bc=document.createElement('input');bc.type='hidden';bc.id='ssrl-'+hiddenId;document.body.appendChild(bc);}
+    bc.value=JSON.stringify(ids);
+    // Mettre a jour les tags dans le wrap
+    const wrap=document.getElementById(wrapId);
+    if(wrap){
+      const allItems=[...picker.querySelectorAll('label')].map(l=>({id:l.querySelector('input')?.dataset.relId,label:l.querySelector('span')?.textContent}));
+      const tagZone=wrap.querySelector('[onclick*="_openPicker"]');
+      if(tagZone){
+        const input=tagZone.querySelector('input[type=text]');
+        const tags=ids.map(id=>{const it=allItems.find(x=>x.id===id);
+          return it?`<span style="display:inline-flex;align-items:center;gap:3px;background:rgba(0,255,156,.15);color:var(--green);border:1px solid rgba(0,255,156,.25);padding:2px 7px;border-radius:3px;font-size:10px;">${it.label}<span style="cursor:pointer;opacity:.6;" onclick="PIL._removeRelTag('${hiddenId}','${id}',event)">×</span></span>`:''}).join('');
+        tagZone.innerHTML=tags+(input?input.outerHTML:'<input type="text" style="border:none;background:transparent;outline:none;font-family:var(--font);font-size:11.5px;color:#fff;flex:1;min-width:80px;padding:2px 4px;">');
+        tagZone.querySelector('input[type=text]')?.focus();
+      }
+    }
+  },
+
+  // Supprimer un tag de relation
+  _removeRelTag(hiddenId,relId,event){
+    event?.stopPropagation();
+    const hidden=document.getElementById(hiddenId);
+    let ids=[];
+    try{ids=JSON.parse(hidden?.value||'[]');}catch{}
+    ids=ids.filter(id=>id!==relId);
+    if(hidden)hidden.value=JSON.stringify(ids);
+    // Decocher dans le picker
+    const pickerId=hiddenId+'-picker';
+    const picker=document.getElementById(pickerId);
+    if(picker){
+      const cb=picker.querySelector(`input[data-rel-id="${relId}"]`);
+      if(cb)cb.checked=false;
+    }
+    // Mettre a jour body copy
+    let bc=document.getElementById('ssrl-'+hiddenId);
+    if(bc)bc.value=JSON.stringify(ids);
+    // Retirer le tag du DOM
+    const wrap=document.getElementById(hiddenId+'-wrap');
+    const tagZone=wrap?.querySelector('[onclick*="_openPicker"]');
+    if(tagZone){
+      const allTags=[...tagZone.querySelectorAll('span[style*="inline-flex"]')];
+      const toRemove=allTags.find(t=>t.textContent.replace('×','').trim()===relId||(t.querySelector('[onclick*="_removeRelTag"]')?.getAttribute('onclick')||'').includes(relId));
+      toRemove?.remove();
+    }
+    this._refreshPickerDisplay(hiddenId);
+  },
+
   _togglePicker(pickerId,hiddenId){
     const picker=document.getElementById(pickerId);if(!picker)return;
     const isOpen=picker.style.display!=='none';
     document.querySelectorAll('[id$="-picker"]').forEach(p=>{if(p!==picker)p.style.display='none';});
     if(isOpen){
       picker.style.display='none';
-      // Sauvegarder les ids cochés dans le hidden
       const grp=picker.querySelector('[data-rel-group]')?.dataset.relGroup;
       if(grp){
-        const ids=[...picker.querySelectorAll('input[type=checkbox]:checked')].map(c=>c.dataset.relId);
-        const hidden=document.getElementById(grp);if(hidden)hidden.value=JSON.stringify(ids);
+        const ids=[...picker.querySelectorAll('input[type=checkbox]:checked')].map(c=>c.dataset.relId).filter(Boolean);
+        const hidden=document.getElementById(grp);
+        if(hidden)hidden.value=JSON.stringify(ids);
+        let bc=document.getElementById('ssrl-'+grp);
+        if(!bc){bc=document.createElement('input');bc.type='hidden';bc.id='ssrl-'+grp;document.body.appendChild(bc);}
+        bc.value=JSON.stringify(ids);
         PIL._refreshPickerDisplay(grp);
       }
     }else{
+      const wEl=document.getElementById(hiddenId+'-wrap');
+      if(wEl){const rr=wEl.getBoundingClientRect();
+        picker.style.top=(rr.bottom+2)+'px';picker.style.left=rr.left+'px';
+        picker.style.width=Math.max(rr.width,260)+'px';}
       picker.style.display='block';
       picker.querySelector('input[type=text]')?.focus();
       // Fermer en cliquant dehors
@@ -4895,6 +5680,14 @@ const PIL = {
       'Priorité':P.select(item.priorite||''),
       'Deadline':P.date(item.deadline||null),
       'Responsable':P.text(item.responsable||''),
+      ...(item.lead?{'Lead':P.select(item.lead)}:{}),
+      ...(()=>{
+        const ids=[].concat(item.societe||[]).map(id=>{
+          const c=Object.values(STORE.clients).find(c=>c.notionPageId===id||c.id===id);
+          return c?c.notionPageId:null;
+        }).filter(Boolean);
+        return ids.length?{'Société':P.relation(ids)}:{};
+      })(),
     };
     if(col==='reunions')return {
       'Titre':P.title(item.nom||''),
@@ -4902,6 +5695,14 @@ const PIL = {
       'Statut':P.select(item.statut||''),
       'Priorité':P.select(item.priorite||''),
       'Compte-rendu':P.text(item.compte_rendu||''),
+      ...(item.lead?{'Lead':P.select(item.lead)}:{}),
+      ...(()=>{
+        const ids=[].concat(item.societe||[]).map(id=>{
+          const c=Object.values(STORE.clients).find(c=>c.notionPageId===id||c.id===id);
+          return c?c.notionPageId:null;
+        }).filter(Boolean);
+        return ids.length?{'Société':P.relation(ids)}:{};
+      })(),
     };
     if(col==='societes')return {
       'Nom':P.title(item.nom||item.name||''),
@@ -4959,7 +5760,7 @@ const PIL = {
   // ── Modals création depuis le Pilotage ──────────────────────
   openCreateModal(collection, onCreated){
     document.getElementById('pil-create-modal')?.remove();
-    const fields = this._fieldsFor(collection).filter(f=>f.type!=='relations');
+    const fields = this._fieldsFor(collection).filter(f=>f.type!=='relations'&&f.type!=='societe-search');
     if(!fields.length)return;
     const titles = {livrables:'Nouveau livrable',reunions:'Nouvelle réunion',factures:'Nouvelle facture',societes:'Nouveau client / prospect'};
     const overlay = document.createElement('div');
@@ -4995,7 +5796,7 @@ const PIL = {
   },
 
   _confirmCreateModal(collection){
-    const fields = this._fieldsFor(collection).filter(f=>f.type!=='relations');
+    const fields = this._fieldsFor(collection).filter(f=>f.type!=='relations'&&f.type!=='societe-search');
     const firstKey = fields[0]?.key;
     const nom = document.getElementById('pcm-'+firstKey)?.value.trim();
     if(!nom){
@@ -5181,6 +5982,13 @@ const PIL = {
     // Champs complets
     const allFields=[
       {l:'Titre',v:item.nom||item.titre||'—'},
+      {l:'Société',v:(()=>{
+        const ids=[].concat(item.societe||item.societes||[]);
+        return ids.map(id=>{
+          const c=Object.values(STORE.clients).find(c=>c.notionPageId===id||c.id===id);
+          return c?c.name:id.slice(0,8);
+        }).filter(Boolean).join(', ')||'—';
+      })()},
       {l:'Statut',v:item.statut||'—'},
       {l:'Priorité',v:item.priorite||'—'},
       {l:'Responsable',v:item.responsable||'—'},
@@ -5960,4 +6768,4 @@ console.log('PDJ Console SGA v3.1 — Point du Jour Conseil');
 
 </script>
 </body>
-</html
+</
