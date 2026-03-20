@@ -5866,14 +5866,24 @@ const PIL = {
     if(items[idx]){Object.assign(items[idx],updated);STORE.notion[col]=[...items];}
     if(items[idx]?.id&&!String(items[idx].id).startsWith('local-')&&STORE.token&&notionAPI.proxyUrl){
       const props=this._toProps(col,items[idx]);
+      console.log('[saveEdit] updatePage',col,items[idx].id,Object.keys(props));
       notionAPI.updatePage(items[idx].id,props).then(r=>{
         if(r) toast('✓ Syncé dans Notion','ok');
-        else toast('⚠ Erreur sync — vérifiez console F12','warn');
-      }).catch(e=>{
-        const isCors=e?.message?.includes('Failed to fetch')||e?.name==='TypeError';
-        if(isCors&&!notionAPI.proxyUrl)toast('⚠ CORS — proxy requis','err');
-        else toast('⚠ Erreur sync: '+e.message,'warn');
-      });
+        else{
+          const err=notionAPI._lastError;
+          toast('⚠ Erreur sync'+(err?' ('+err.status+': '+err.message.slice(0,40)+')':''),'warn');
+        }
+      }).catch(e=>toast('⚠ Erreur sync: '+e.message,'warn'));
+    } else if(items[idx]?.id&&String(items[idx].id).startsWith('local-')&&STORE.token&&notionAPI.proxyUrl){
+      // Item local non encore syncé → créer dans Notion
+      const dbMap={livrables:'pil_livrables',reunions:'pil_reunions',factures:'pil_factures'};
+      const dbId=notionAPI.dbIds[dbMap[col]];
+      if(dbId){
+        notionAPI.createPage(dbId,this._toProps(col,items[idx])).then(p=>{
+          if(p){items[idx].id=p.id;items[idx].url=p.url;toast('✓ Créé dans Notion','ok');}
+          else toast('⚠ Erreur création Notion','warn');
+        }).catch(()=>{});
+      }
     }
     try{localStorage.setItem('pdj_notion_'+col,JSON.stringify(STORE.notion[col]));}catch(e){}
     this._syncRelations(col, items[idx]||{});
@@ -6147,8 +6157,8 @@ const PIL = {
         }).filter(Boolean);
         return dids.length?{'Dossier CI':P.relation(dids)}:{};
       })(),
-      ...(item.notes?{'Notes':P.text(item.notes)}:{}),
-      ...(item.lien_drive?{'Lien Drive':P.url(item.lien_drive)}:{}),
+      'Notes':P.text(item.notes||''),
+      'Lien Drive':P.url(item.lien_drive||null),
     };
     if(col==='reunions')return {
       'Titre':P.title(item.nom||''),
@@ -6179,7 +6189,7 @@ const PIL = {
         }).filter(Boolean);
         return lids.length?{'Livrables liés':P.relation(lids)}:{};
       })(),
-      ...(item.lien_drive_cr?{'Lien Drive CR':P.url(item.lien_drive_cr)}:{}),
+      'Lien Drive CR':P.url(item.lien_drive_cr||null),
     };
     if(col==='societes')return {
       'Nom':P.title(item.nom||item.name||''),
@@ -6213,7 +6223,7 @@ const PIL = {
         return d?d.notionPageId||null:null;
       }).filter(Boolean);
       if(_fDosIds.length) facProps['Dossier CI']=P.relation(_fDosIds);
-      if(item.lien_drive) facProps['Lien Drive']=P.url(item.lien_drive);
+      facProps['Lien Drive']=P.url(item.lien_drive||null);
       return facProps;
     }
     return {};
@@ -6622,7 +6632,11 @@ const PIL = {
       }
       // addDossier declenche syncIndicator.run->syncDossier (une seule fois)
       const did=STORE.addDossier(clientId,disp,annee,exercice);
-      if(did&&priorite!=='Moyenne')STORE.updateDossier(did,'priorite',priorite);
+      // Priorite : modification directe SANS passer par updateDossier (evite 2e sync)
+      if(did&&priorite&&priorite!=='Moyenne'){
+        STORE.dossiers[did].priorite=priorite;
+        STORE._saveLocal();
+      }
       const newDossier=STORE.dossiers[did];
       this.render();
       const cb=this._createModalCallback;
