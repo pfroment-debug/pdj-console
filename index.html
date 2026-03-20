@@ -146,6 +146,7 @@ body::after{
   font-size:10px;font-weight:800;color:var(--green);cursor:pointer;
 }
 
+.nav-av:hover{transform:scale(1.08);box-shadow:0 4px 16px rgba(24,0,255,.4);}
 /* ── Layout ─────────────────────────────────────────────── */
 #main{margin-top:var(--nav-h);height:calc(100vh - var(--nav-h));overflow:hidden;position:relative;z-index:1;}
 .panel{display:none;width:100%;height:100%;}
@@ -713,7 +714,7 @@ tr:hover td{background:rgba(255,255,255,.02);}
   <div class="nav-r">
     <span id="sync-ind"></span>
     <button class="nav-data-btn" onclick="openModal()">&#8635; Données</button>
-    <div class="nav-av">PF</div>
+    <div class="nav-av" id="nav-lead-av" onclick="toggleLeadMenu()" title="Vue globale" style="cursor:pointer;font-size:10px;font-weight:800;letter-spacing:.5px;transition:transform .15s,box-shadow .15s;">GLB</div>
   </div>
 </nav>
 
@@ -1971,6 +1972,18 @@ const STORE = {
   },
 
   // ── Persistance ────────────────────────────────────────────
+  currentLead: localStorage.getItem('pdj_current_lead')||'',
+
+  setLead(lead){
+    this.currentLead=lead;
+    localStorage.setItem('pdj_current_lead',lead);
+    _updateLeadBadge(lead);
+    if(typeof PIL!=='undefined') PIL.setLead(lead);
+    if(_curPanel==='overview'&&typeof renderOverview==='function') renderOverview();
+    if(_curPanel==='ci'){renderCISidebar();renderCIContent();}
+    if(_curPanel==='cockpit'&&typeof renderCockpit==='function') renderCockpit();
+  },
+
   _saveLocal(){
     try{
       localStorage.setItem('pdj_clients',JSON.stringify(this.clients));
@@ -2083,7 +2096,12 @@ function ciNav(view,clientId,dossierId){
 // ─── SIDEBAR ──────────────────────────────────────────────
 function renderCISidebar(){
   const q=(document.getElementById('ci-search')?.value||'').toLowerCase();
-  const clients=Object.values(STORE.clients).filter(c=>c.name.toLowerCase().includes(q)).sort((a,b)=>a.name.localeCompare(b.name));
+  const _lead=STORE.currentLead||'';
+  const clients=Object.values(STORE.clients).filter(c=>{
+    if(!c.name.toLowerCase().includes(q)) return false;
+    if(!_lead) return true;
+    return STORE.clientDossierIds(c.id).some(did=>STORE.dossiers[did]?.lead===_lead);
+  }).sort((a,b)=>a.name.localeCompare(b.name));
   const items=clients.map(c=>{
     const dids=STORE.clientDossierIds(c.id);
     const total=dids.reduce((s,did)=>s+(STORE.calcCI(STORE.dossiers[did]||{}).montantCI||0),0);
@@ -4642,8 +4660,9 @@ function renderOverview(){
   const todayEnd = new Date(today); todayEnd.setHours(23,59,59,999);
   const weekEnd = new Date(today); weekEnd.setDate(today.getDate()+7);
   const clients = Object.values(STORE.clients);
-  const lv = STORE.notion.livrables||[];
-  const ru = STORE.notion.reunions||[];
+  const _lead=STORE.currentLead||'';
+  const lv=(STORE.notion.livrables||[]).filter(l=>!_lead||l.lead===_lead);
+  const ru=(STORE.notion.reunions||[]).filter(r=>!_lead||r.lead===_lead);
 
   const classify = (dateStr) => {
     if(!dateStr) return null;
@@ -4785,8 +4804,17 @@ function renderOverview(){
 
   const isEmpty=!buckets.late.length&&!buckets.today.length&&!buckets.week.length;
 
+  const _leadBanner=_lead?(()=>{
+    const cfg=_LEADS.find(l=>l.lead===_lead)||_LEADS[0];
+    const brdColor=_lead==='Paul'?'rgba(55,138,221,.35)':_lead==='Guillaume'?'rgba(83,74,183,.35)':_lead==='Axel'?'rgba(0,255,156,.25)':'rgba(249,21,117,.25)';
+    return '<div style="display:flex;align-items:center;gap:12px;padding:10px 16px;margin-bottom:14px;border-radius:var(--r-sm);background:'+cfg.bg.replace('135deg','160deg')+';border:1px solid '+brdColor+';">'  
+      +'<div style="width:34px;height:34px;border-radius:50%;background:rgba(0,0,0,.25);display:flex;align-items:center;justify-content:center;font-size:11px;font-weight:800;color:'+cfg.color+';letter-spacing:.5px;">'+cfg.abbr+'</div>'
+      +'<div><div style="font-size:13px;font-weight:800;color:'+cfg.color+';">Vue '+cfg.lbl+'</div><div style="font-size:10px;color:rgba(255,255,255,.5);">Livrables · réunions · dossiers CI filtrés pour '+cfg.lbl+'</div></div>'
+      +'<button onclick="STORE.setLead(\'\')" style="margin-left:auto;padding:3px 11px;border-radius:99px;border:1px solid rgba(255,255,255,.25);background:rgba(0,0,0,.2);color:rgba(255,255,255,.65);font-family:var(--font);font-size:10px;cursor:pointer;">� Vue globale</button>'
+      +'</div>';
+  })():'';
   document.getElementById('panel-overview').innerHTML='<div class="ov-wrap" style="overflow-y:auto;height:100%;"><div style="padding:20px 24px;">'
-    +kpiBlock
+    +_leadBanner+kpiBlock
     +'<div style="display:grid;grid-template-columns:1fr 300px;gap:20px;">'
       +'<div>'
         +(isEmpty?'<div style="text-align:center;padding:30px;color:var(--t40);"><div style="font-size:28px;margin-bottom:8px;">\u2713</div><div style="font-size:14px;font-weight:700;">Tout est \u00e0 jour</div><div style="font-size:12px;margin-top:4px;">Aucun \u00e9l\u00e9ment en retard ou \u00e0 traiter cette semaine</div></div>':'')
@@ -5173,7 +5201,7 @@ function renderCockpit(){
 // PDJ PILOTAGE — Vanilla JS complet
 // ═══════════════════════════════════════════════════════════
 const PIL = {
-  state:{tab:'dashboard',token:null,loading:false,error:null,showTokenBar:false,editItem:null,newItem:null,openDetail:null,_createModalCallback:null},
+  state:{tab:'dashboard',token:null,loading:false,error:null,showTokenBar:false,editItem:null,newItem:null,openDetail:null,_createModalCallback:null,filterLead:''},
 
   mount(){
     const root=document.getElementById('pil-root');if(!root)return;
@@ -5214,6 +5242,9 @@ const PIL = {
   },
 
   setTab(t){this.state.tab=t;this.state.editItem=null;this.state.newItem=null;this.state.openDetail=null;this.render();},
+  setLead(lead){this.state.filterLead=lead;this.state.editItem=null;this.state.newItem=null;this.state.openDetail=null;
+    if(typeof STORE!=='undefined'&&STORE.currentLead!==lead){STORE.currentLead=lead;localStorage.setItem('pdj_current_lead',lead);if(typeof _updateLeadBadge==='function')_updateLeadBadge(lead);}
+    this.render();},
   toggleTokenBar(){this.state.showTokenBar=!this.state.showTokenBar;this.render();setTimeout(()=>document.getElementById('pil-tok-inline')?.focus(),50);},
 
   connectToken(){
@@ -5252,11 +5283,30 @@ const PIL = {
   _tabContent(){
     const t=this.state.tab;
     if(t==='dashboard')return this._dashboard();
-    if(t==='livrables')return this._list('livrables','Livrables',this._livFields());
-    if(t==='reunions') return this._list('reunions','Réunions',this._reuFields());
+    if(t==='livrables')return this._leadBar()+this._list('livrables','Livrables',this._livFields());
+    if(t==='reunions') return this._leadBar()+this._list('reunions','Réunions',this._reuFields());
     if(t==='pipeline') return this._pipeline();
     if(t==='factures') return this._list('factures','Factures',this._facFields());
     return '';
+  },
+
+  // Barre de filtres par Lead
+  _leadBar(){
+    const leads=['Paul','Guillaume','Axel','Lucile'];
+    const colors={Paul:'#378ADD',Guillaume:'#8877EE',Axel:'var(--green)',Lucile:'var(--pink)'};
+    const bgs={Paul:'rgba(55,138,221,.15)',Guillaume:'rgba(83,74,183,.15)',Axel:'rgba(0,255,156,.12)',Lucile:'rgba(249,21,117,.12)'};
+    const cur=this.state.filterLead||'';
+    const btnStyle=(lead)=>cur===lead
+      ?`background:${bgs[lead]};color:${colors[lead]};border:1px solid ${colors[lead]};`
+      :`background:var(--t08);color:var(--t60);border:1px solid var(--border);`;
+    return `<div style="display:flex;align-items:center;gap:6px;padding:8px 0 4px 0;border-bottom:1px solid var(--border);margin-bottom:8px;flex-wrap:wrap;">
+      <span style="font-size:9.5px;font-weight:800;text-transform:uppercase;letter-spacing:.12em;color:var(--t40);margin-right:4px;">Vue :</span>
+      <button style="${cur===''?'background:rgba(255,255,255,.1);color:#fff;border:1px solid rgba(255,255,255,.2);':'background:var(--t08);color:var(--t60);border:1px solid var(--border);'}padding:3px 12px;border-radius:99px;font-family:var(--font);font-size:11px;font-weight:600;cursor:pointer;"
+        onclick="PIL.setLead('')">🌐 Tous</button>
+      ${leads.map(l=>`<button style="${btnStyle(l)}padding:3px 12px;border-radius:99px;font-family:var(--font);font-size:11px;font-weight:600;cursor:pointer;"
+        onclick="PIL.setLead('${l}')">\uD83D\uDC64 ${l}</button>`).join('')}
+      ${cur?`<span style="font-size:10px;color:var(--t40);margin-left:6px;">Filtré — <strong style="color:${colors[cur]||'#fff'}">${cur}</strong></span>`:''}  
+    </div>`;
   },
 
   _livFields:()=>[
@@ -5395,7 +5445,10 @@ const PIL = {
   },
 
   _list(col,title,fields){
-    const items=STORE.notion[col]||[];
+    // Appliquer le filtre Lead si actif
+    const _allItems=STORE.notion[col]||[];
+    const _lead=this.state.filterLead||'';
+    const items=_lead?_allItems.filter(it=>it.lead===_lead):_allItems;
     const editIdx=this.state.editItem?.collection===col?this.state.editItem.idx:null;
     const isNew=this.state.newItem?.collection===col;
     const fbar=(item,prefix,saveLabel,saveFn,cancelFn)=>`<div style="display:flex;gap:8px;flex-wrap:wrap;align-items:flex-end;padding:10px 12px;background:rgba(0,255,156,.04);border-bottom:1px solid rgba(0,255,156,.1);margin-bottom:6px;">
@@ -5436,12 +5489,12 @@ const PIL = {
     }).join('');
     return `<div>
       <div style="display:flex;align-items:center;justify-content:space-between;margin-bottom:10px;">
-        <div class="pil-section-title">${title} (${items.length})</div>
+        <div class="pil-section-title">${title} (${items.length}${_lead&&_allItems.length!==items.length?' / '+_allItems.length:''})</div>
         <div style="display:flex;gap:6px;"><button class="btn btn-ghost btn-sm" onclick="PIL.fetchAll()">↺</button><button class="btn btn-ink btn-sm" onclick="PIL.startNew('${col}')">＋ Nouveau</button></div>
       </div>
       ${totLine}
       ${isNew?fbar({},'pil-new','Créer',`PIL.saveNew('${col}')`,`PIL.cancelEdit()`):''}
-      <div class="pil-list-grid">${rows||`<div style="padding:20px;text-align:center;color:var(--ink-40,rgba(26,23,20,.4));">Aucun élément — cliquez + Nouveau ou ↺ Notion</div>`}</div>
+      <div class="pil-list-grid">${rows||`<div style="padding:20px;text-align:center;color:var(--ink-40,rgba(26,23,20,.4));">${_lead?'Aucun élément pour '+_lead+' — changez de vue ou cliquez + Nouveau':'Aucun élément — cliquez + Nouveau ou ↺ Notion'}</div>`}</div>
     </div>`;
   },
 
@@ -5493,6 +5546,8 @@ const PIL = {
     const obj=this._readForm('pil-new',fields);
     if(!obj[fields[0]?.key]?.toString().trim()){toast('Titre requis','warn');return;}
     obj.id='local-'+Date.now();obj.nom=obj[fields[0].key]||'';
+    // Si un filtre Lead est actif, l'appliquer automatiquement
+    if(this.state.filterLead&&!obj.lead) obj.lead=this.state.filterLead;
     if(!STORE.notion[col])STORE.notion[col]=[];
     STORE.notion[col]=[...STORE.notion[col],obj];
     if(STORE.token){
@@ -6858,8 +6913,70 @@ if(STORE.token && notionAPI.proxyUrl){
   }, 10*60*1000);
 }
 
+// Selecteur de vue Lead
+const _LEADS=[
+  {lead:'',lbl:'Global',abbr:'GLB',bg:'linear-gradient(135deg,#090B33,#1a1f5e)',color:'rgba(255,255,255,.7)'},
+  {lead:'Paul',lbl:'Paul',abbr:'PF',bg:'linear-gradient(135deg,#1d72c8,#378ADD)',color:'#fff'},
+  {lead:'Guillaume',lbl:'Guillaume',abbr:'GH',bg:'linear-gradient(135deg,#534AB7,#8877EE)',color:'#fff'},
+  {lead:'Axel',lbl:'Axel',abbr:'AH',bg:'linear-gradient(135deg,#00b36e,#00FF9C)',color:'#090B33'},
+  {lead:'Lucile',lbl:'Lucile',abbr:'LB',bg:'linear-gradient(135deg,#c0125e,#F91575)',color:'#fff'},
+];
+function _updateLeadBadge(lead){
+  const av=document.getElementById('nav-lead-av');if(!av)return;
+  const cfg=_LEADS.find(l=>l.lead===lead)||_LEADS[0];
+  av.textContent=cfg.abbr;
+  av.style.background=cfg.bg;
+  av.style.color=cfg.color;
+  av.title=cfg.lead?'👤 Vue '+cfg.lbl:'🌐 Vue globale — cliquer pour changer';
+  const brdColor=cfg.lead?(cfg.lead==='Paul'?'#378ADD':cfg.lead==='Guillaume'?'#8877EE':cfg.lead==='Axel'?'#00FF9C':'#F91575'):'var(--border2)';
+  av.style.border='2px solid '+brdColor;
+  av.style.boxShadow=cfg.lead?'0 0 8px '+brdColor+'44':'';
+}
+function toggleLeadMenu(){
+  const existing=document.getElementById('lead-vm');
+  if(existing){existing.remove();return;}
+  const av=document.getElementById('nav-lead-av');if(!av)return;
+  const menu=document.createElement('div');
+  menu.id='lead-vm';
+  menu.style.cssText='position:fixed;z-index:99999;background:#0b0e3a;border:1px solid rgba(24,0,255,.4);border-radius:12px;box-shadow:0 16px 48px rgba(0,0,0,.8);padding:8px;min-width:190px;';
+  const r=av.getBoundingClientRect();
+  menu.style.top=(r.bottom+8)+'px';
+  menu.style.right=(window.innerWidth-r.right)+'px';
+  const hdr=document.createElement('div');
+  hdr.style.cssText='padding:5px 10px 8px;font-size:9px;font-weight:800;text-transform:uppercase;letter-spacing:.15em;color:rgba(255,255,255,.3);border-bottom:1px solid rgba(255,255,255,.08);margin-bottom:4px;';
+  hdr.textContent='Changer de vue';
+  menu.appendChild(hdr);
+  const cur=STORE.currentLead||'';
+  _LEADS.forEach(cfg=>{
+    const row=document.createElement('div');
+    const isCur=cfg.lead===cur;
+    row.style.cssText='display:flex;align-items:center;gap:10px;padding:8px 10px;border-radius:8px;cursor:pointer;'+(isCur?'background:rgba(255,255,255,.08);':'');
+    const dot=document.createElement('div');
+    dot.style.cssText='width:30px;height:30px;border-radius:50%;display:flex;align-items:center;justify-content:center;font-size:10px;font-weight:800;flex-shrink:0;background:'+cfg.bg+';color:'+cfg.color+';';
+    dot.textContent=cfg.abbr;
+    const lbl=document.createElement('div');
+    lbl.style.cssText='flex:1;';
+    const sub=cfg.lead?'Livrables · dossiers CI · réunions':'Tout le portefeuille PDJ';
+    lbl.innerHTML='<div style="font-size:12.5px;font-weight:700;color:#fff;">'+cfg.lbl+'</div>'
+      +'<div style="font-size:9.5px;color:rgba(255,255,255,.35);">'+sub+'</div>';
+    const chk=document.createElement('span');
+    chk.style.cssText='font-size:13px;color:var(--green);opacity:'+(isCur?'1':'0');
+    chk.textContent='✓';
+    row.appendChild(dot);row.appendChild(lbl);row.appendChild(chk);
+    row.onmouseover=()=>{if(!isCur)row.style.background='rgba(24,0,255,.18)';};
+    row.onmouseout=()=>{row.style.background=isCur?'rgba(255,255,255,.08)':'';};
+    row.onclick=()=>{STORE.setLead(cfg.lead);menu.remove();};
+    menu.appendChild(row);
+  });
+  document.body.appendChild(menu);
+  setTimeout(()=>document.addEventListener('pointerdown',function _cl(e){
+    if(!menu.contains(e.target)&&e.target.id!=='nav-lead-av'){menu.remove();document.removeEventListener('pointerdown',_cl,true);}
+  },{capture:true}),80);
+}
 // Initial render
 nav('overview');
+_updateLeadBadge(STORE.currentLead||'');
+if(STORE.currentLead)setTimeout(()=>PIL.setLead(STORE.currentLead),200);
 console.log('PDJ Console SGA v3.1 — Point du Jour Conseil');
 
 </script>
