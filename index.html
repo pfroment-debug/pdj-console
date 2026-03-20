@@ -4553,6 +4553,112 @@ function ciSyncClient(id){
 }
 
 // Pousse client + tous ses dossiers + toutes les lignes vers Notion
+function pfmCreateDossier(){
+  // Fermer le picker d'abord
+  const picker=document.getElementById('pfm-dos-picker');
+  if(picker)picker.style.display='none';
+  // Ouvrir la modale de creation de dossier PIL
+  PIL.openCreateDossierModal((newDossier)=>{
+    if(!newDossier)return;
+    const id=newDossier.id;
+    const cn=STORE.clients[newDossier.clientId]?.name||newDossier.clientId;
+    const label=cn+' — '+newDossier.dispositif+' '+newDossier.annee;
+    // Ajouter le dossier dans le picker
+    const pk=document.getElementById('pfm-dos-picker');
+    if(pk){
+      const createBtn=pk.querySelector('button[onmousedown*="pfmCreateDossier"]');
+      const lbl=document.createElement('label');
+      lbl.style.cssText='display:flex;align-items:center;gap:8px;padding:7px 9px;border-radius:5px;cursor:pointer;font-size:12px;color:#fff;background:rgba(0,255,156,.08);';
+      lbl.innerHTML='<input type="checkbox" data-dos-id="'+esc(id)+'" checked style="accent-color:var(--green);">'
+        +'<span style="flex:1;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;">'+esc(label)+'</span>'
+        +'<span style="font-size:9px;color:var(--green);font-weight:800;flex-shrink:0;">Nouveau</span>';
+      lbl.querySelector('input').addEventListener('change',function(){pfmToggleDos(this);});
+      if(createBtn)pk.insertBefore(lbl,createBtn);else pk.appendChild(lbl);
+    }
+    // Ajouter le tag dans la zone
+    const tags=document.getElementById('pfm-dos-tags');
+    if(tags){
+      const span=document.createElement('span');
+      span.id='pfm-dos-tag-'+id;
+      span.style.cssText='display:inline-flex;align-items:center;gap:3px;background:rgba(0,255,156,.15);color:var(--green);border:1px solid rgba(0,255,156,.25);padding:2px 8px;border-radius:3px;font-size:10.5px;';
+      span.innerHTML=esc(label)+'<span style="cursor:pointer;opacity:.6;margin-left:3px;" onmousedown="event.stopPropagation();pfmRemoveDos(\''+id+'\')">×</span>';
+      const inp=tags.querySelector('input[type=text]');
+      if(inp)tags.insertBefore(span,inp);else tags.appendChild(span);
+    }
+    // Mettre a jour le hidden
+    pfmSaveDos();
+    // Prefill montant avec honoraires du nouveau dossier
+    const montEl=document.getElementById('pfm-montant');
+    if(montEl&&(!parseFloat(montEl.value)||parseFloat(montEl.value)===2000)){
+      if(newDossier.honoraires>0)montEl.value=newDossier.honoraires;
+    }
+    // Prefill intitule si vide
+    const nomEl=document.getElementById('pfm-nom');
+    if(nomEl&&!nomEl.value.trim()){
+      nomEl.value='Honoraires '+newDossier.dispositif+' '+newDossier.annee+' — '+cn;
+    }
+    toast(label+' créé et lié ✓','ok');
+  });
+}
+
+function pfmOpenDosPicker(){
+  const picker=document.getElementById('pfm-dos-picker');
+  const tags=document.getElementById('pfm-dos-tags');
+  if(!picker||!tags)return;
+  const r=tags.getBoundingClientRect();
+  picker.style.top=(r.bottom+2)+'px';
+  picker.style.left=r.left+'px';
+  picker.style.width=Math.max(r.width,300)+'px';
+  picker.style.display='block';
+  setTimeout(()=>document.addEventListener('pointerdown',function _pf(e){
+    if(!picker.contains(e.target)&&!tags.contains(e.target)){
+      picker.style.display='none';pfmSaveDos();
+      document.removeEventListener('pointerdown',_pf,true);
+    }
+  },{capture:true}),80);
+}
+function pfmFilterDos(q){
+  const picker=document.getElementById('pfm-dos-picker');if(!picker)return;
+  picker.querySelectorAll('label').forEach(l=>{
+    l.style.display=l.textContent.toLowerCase().includes((q||'').toLowerCase())?'':'none';
+  });
+  if(picker.style.display==='none')pfmOpenDosPicker();
+}
+function pfmToggleDos(cb){
+  pfmSaveDos();
+  const id=cb.dataset.dosId;
+  const tags=document.getElementById('pfm-dos-tags');if(!tags)return;
+  if(cb.checked){
+    const d=STORE.dossiers[id];if(!d)return;
+    const cn=STORE.clients[d.clientId]?.name||d.clientId;
+    const span=document.createElement('span');
+    span.id='pfm-dos-tag-'+id;
+    span.style.cssText='display:inline-flex;align-items:center;gap:3px;background:rgba(0,255,156,.15);color:var(--green);border:1px solid rgba(0,255,156,.25);padding:2px 8px;border-radius:3px;font-size:10.5px;';
+    span.innerHTML=esc(cn+' — '+d.dispositif+' '+d.annee)+'<span style="cursor:pointer;opacity:.6;margin-left:3px;" onmousedown="event.stopPropagation();pfmRemoveDos(\''+id+'\')">×</span>';
+    const inp=tags.querySelector('input[type=text]');
+    if(inp)tags.insertBefore(span,inp);else tags.appendChild(span);
+    // Auto-prefill montant
+    const montEl=document.getElementById('pfm-montant');
+    if(montEl&&(!parseFloat(montEl.value))){
+      if(d.honoraires>0)montEl.value=d.honoraires;
+    }
+  } else {
+    document.getElementById('pfm-dos-tag-'+id)?.remove();
+  }
+}
+function pfmRemoveDos(id){
+  document.getElementById('pfm-dos-tag-'+id)?.remove();
+  const picker=document.getElementById('pfm-dos-picker');
+  if(picker){const cb=picker.querySelector('[data-dos-id="'+id+'"]');if(cb)cb.checked=false;}
+  pfmSaveDos();
+}
+function pfmSaveDos(){
+  const picker=document.getElementById('pfm-dos-picker');
+  const hidden=document.getElementById('pfm-dos-hidden');
+  if(!picker||!hidden)return;
+  const ids=[...picker.querySelectorAll('input[type=checkbox]:checked')].map(c=>c.dataset.dosId).filter(Boolean);
+  hidden.value=JSON.stringify(ids);
+}
 function ciDiagnostic(){
   const lines=[];
   lines.push('Token: '+(STORE.token?'✓ OK':'? MANQUANT'));
@@ -5615,8 +5721,17 @@ const PIL = {
     </div>`;
   },
 
-  startEdit(col,idx){this.state.editItem={collection:col,idx};this.state.newItem=null;this.render();},
-  startNew(col){this.state.newItem={collection:col};this.state.editItem=null;this.render();setTimeout(()=>document.querySelector('[id^="pil-new-"]')?.focus(),50);},
+  startEdit(col,idx){
+    if(col==='factures'){this.openEditFactureModal(idx);return;}
+    this.state.editItem={collection:col,idx};
+    this.state.newItem=null;
+    this.render();
+  },
+  startNew(col){
+    if(col==='factures'){this.openCreateFactureModal();return;}
+    this.state.newItem={collection:col};this.state.editItem=null;this.render();
+    setTimeout(()=>document.querySelector('[id^="pil-new-"]')?.focus(),50);
+  },
   cancelEdit(){this.state.editItem=null;this.state.newItem=null;this.render();},
 
   saveEdit(col,idx){
@@ -5990,6 +6105,165 @@ const PIL = {
     </div>`;
   },
   // ── Modals création depuis le Pilotage ──────────────────────
+  openCreateFactureModal(){
+    this._openFactureModal(null,null,(item)=>{
+      item.id='local-'+Date.now();item.nom=item.nom||'Facture';
+      if(!STORE.notion.factures)STORE.notion.factures=[];
+      STORE.notion.factures.push(item);
+      if(STORE.token&&notionAPI.proxyUrl&&notionAPI.dbIds.pil_factures){
+        notionAPI.createPage(notionAPI.dbIds.pil_factures,this._toProps('factures',item)).then(p=>{
+          if(p){item.id=p.id;item.url=p.url;toast('✓ Facture syncée dans Notion','ok');}
+          else toast('⚠ Erreur sync Notion','warn');
+        }).catch(()=>{});
+      }
+      try{localStorage.setItem('pdj_notion_factures',JSON.stringify(STORE.notion.factures));}catch(e){}
+      this.render();toast('Facture créée ✓');
+    });
+  },
+
+  openEditFactureModal(idx){
+    const item=(STORE.notion.factures||[])[idx];
+    if(!item)return;
+    this._openFactureModal(item,idx,(updated)=>{
+      const items=STORE.notion.factures||[];
+      if(items[idx])Object.assign(items[idx],updated);
+      if(items[idx]?.id&&STORE.token&&notionAPI.proxyUrl){
+        notionAPI.updatePage(items[idx].id,this._toProps('factures',items[idx])).then(r=>{
+          if(r)toast('✓ Syncé dans Notion','ok');
+          else toast('⚠ Erreur sync Notion','warn');
+        }).catch(()=>{});
+      }
+      try{localStorage.setItem('pdj_notion_factures',JSON.stringify(STORE.notion.factures));}catch(e){}
+      this.render();toast('Facture mise à jour ✓');
+    });
+  },
+
+  _openFactureModal(item,idx,onSave){
+    document.getElementById('pil-fac-modal')?.remove();
+    const isNew=!item;
+    const _lead=this.state.filterLead||'';
+    const firstDos=Object.values(STORE.dossiers).find(d=>!_lead||!d.lead||d.lead===_lead);
+    const defaultMontant=item?.montant||(firstDos?.honoraires>0?firstDos.honoraires:2000);
+    const clients=Object.values(STORE.clients).sort((a,b)=>a.name.localeCompare(b.name));
+    const dossiers=Object.values(STORE.dossiers).map(d=>({id:d.id,label:(STORE.clients[d.clientId]?.name||d.clientId)+' — '+d.dispositif+' '+d.annee,notionPageId:d.notionPageId}));
+    const curDos=[].concat(item?.rel_dossiers||[]);
+    const curSocIds=[].concat(item?.societe||[]);
+    const curSocName=(()=>{
+      if(!curSocIds.length)return '';
+      const c=Object.values(STORE.clients).find(c=>c.notionPageId===curSocIds[0]||c.id===curSocIds[0]);
+      return c?c.name:curSocIds[0]||'';
+    })();
+    const today=new Date().toISOString().slice(0,10);
+    const statuts=['Brouillon','Envoyée','Payée','En retard','Annulée'];
+    const dosTagsHtml=curDos.map(id=>{
+      const d=STORE.dossiers[id];if(!d)return '';
+      const cn=STORE.clients[d.clientId]?.name||d.clientId;
+      return '<span id="pfm-dos-tag-'+esc(id)+'" style="display:inline-flex;align-items:center;gap:3px;background:rgba(0,255,156,.15);color:var(--green);border:1px solid rgba(0,255,156,.25);padding:2px 8px;border-radius:3px;font-size:10.5px;">'
+        +esc(cn+' — '+d.dispositif+' '+d.annee)
+        +'<span style="cursor:pointer;opacity:.6;margin-left:3px;" onmousedown="event.stopPropagation();pfmRemoveDos(\''+esc(id)+'\')">×</span></span>';
+    }).join('');
+    const dosPickerHtml=dossiers.map(d=>
+      '<label style="display:flex;align-items:center;gap:8px;padding:7px 9px;border-radius:5px;cursor:pointer;font-size:12px;color:#fff;" onmouseover="this.style.background=\'rgba(24,0,255,.15)\'" onmouseout="this.style.background=\'\'">'
+      +'<input type="checkbox" data-dos-id="'+esc(d.id)+'" '+(curDos.includes(d.id)?'checked':'')+' style="accent-color:var(--green);" onchange="pfmToggleDos(this)">'
+      +'<span style="flex:1;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;">'+esc(d.label)+'</span>'
+      +'</label>'
+    ).join('');
+    const overlay=document.createElement('div');
+    overlay.id='pil-fac-modal';
+    overlay.style.cssText='position:fixed;inset:0;background:rgba(6,8,30,.85);backdrop-filter:blur(8px);z-index:600;display:flex;align-items:center;justify-content:center;padding:20px;overflow-y:auto;';
+    overlay.innerHTML=`
+      <div style="background:var(--navy-card);border:1px solid var(--border2);border-radius:var(--r-lg);width:100%;max-width:540px;box-shadow:var(--sh-lg);">
+        <div style="display:flex;align-items:center;justify-content:space-between;padding:14px 18px;border-bottom:1px solid var(--border);background:rgba(0,0,0,.2);border-radius:var(--r-lg) var(--r-lg) 0 0;">
+          <div style="font-size:13px;font-weight:800;text-transform:uppercase;letter-spacing:.05em;">📄 ${isNew?'Nouvelle facture':'Modifier la facture'}</div>
+          <div class="modal-close" onclick="document.getElementById('pil-fac-modal')?.remove()">✕</div>
+        </div>
+        <div style="padding:20px;display:grid;grid-template-columns:1fr 1fr;gap:14px;">
+          <div style="grid-column:1/-1;"><div style="font-size:9px;font-weight:800;text-transform:uppercase;letter-spacing:.12em;color:var(--t40);margin-bottom:5px;">Intitulé *</div>
+            <input id="pfm-nom" type="text" value="${esc(item?.nom||'')}" placeholder="Ex: Honoraires CIR 2024…" style="width:100%;background:var(--t08);border:1px solid var(--border2);border-radius:var(--r-sm);padding:8px 12px;font-family:var(--font);font-size:13px;color:#fff;outline:none;box-sizing:border-box;"></div>
+          <div style="grid-column:1/-1;"><div style="font-size:9px;font-weight:800;text-transform:uppercase;letter-spacing:.12em;color:var(--t40);margin-bottom:5px;">Société</div>
+            <input id="pfm-soc" type="text" value="${esc(curSocName)}" placeholder="Rechercher ou créer…" autocomplete="off"
+              style="width:100%;background:var(--t08);border:1px solid rgba(0,255,156,.2);border-radius:var(--r-sm);padding:8px 12px;font-family:var(--font);font-size:13px;color:#fff;outline:none;box-sizing:border-box;"
+              oninput="SS.openSoc('pfm-soc')" onfocus="SS.openSoc('pfm-soc')" onkeydown="SS._key('pfm-soc',event)"></div>
+          <div style="grid-column:1/-1;"><div style="font-size:9px;font-weight:800;text-transform:uppercase;letter-spacing:.12em;color:var(--t40);margin-bottom:5px;">Dossiers CI liés</div>
+            <div id="pfm-dos-tags" style="background:var(--t08);border:1px solid rgba(0,255,156,.2);border-radius:var(--r-sm);padding:6px 10px;min-height:36px;display:flex;flex-wrap:wrap;gap:4px;align-items:center;cursor:text;" onclick="document.getElementById('pfm-dos-q')?.focus();pfmOpenDosPicker()">
+              ${dosTagsHtml}
+              <input id="pfm-dos-q" type="text" placeholder="${curDos.length?'':'+ Lier un dossier CI…'}" autocomplete="off"
+                style="border:none;background:transparent;outline:none;font-family:var(--font);font-size:12.5px;color:#fff;flex:1;min-width:120px;padding:2px 4px;"
+                oninput="pfmFilterDos(this.value)" onfocus="pfmOpenDosPicker()">
+            </div>
+            <div id="pfm-dos-picker" style="display:none;position:fixed;z-index:99999;background:var(--navy-card);border:1px solid var(--border2);border-radius:var(--r-sm);box-shadow:var(--sh-lg);padding:6px;min-width:300px;max-height:200px;overflow-y:auto;">
+              ${dosPickerHtml||'<div style="padding:10px;color:var(--t40);font-size:11px;">Aucun dossier CI</div>'}
+            <button style="width:100%;margin-top:6px;padding:7px 10px;font-size:11px;background:rgba(24,0,255,.12);border:1px solid rgba(24,0,255,.2);border-radius:5px;color:var(--blue);cursor:pointer;text-align:left;font-family:var(--font);font-weight:600;"
+              onmousedown="event.stopPropagation();pfmCreateDossier()">
+              ➕ Créer un nouveau dossier CI…
+            </button>
+            </div>
+            <input type="hidden" id="pfm-dos-hidden" value="${esc(JSON.stringify(curDos))}">
+          </div>
+          <div><div style="font-size:9px;font-weight:800;text-transform:uppercase;letter-spacing:.12em;color:var(--t40);margin-bottom:5px;">Montant HT €</div>
+            <input id="pfm-montant" type="number" value="${defaultMontant||2000}" min="0" step="0.01" style="width:100%;background:var(--t08);border:1px solid var(--border2);border-radius:var(--r-sm);padding:8px 12px;font-family:var(--font);font-size:13px;font-weight:700;color:var(--green);outline:none;box-sizing:border-box;"></div>
+          <div><div style="font-size:9px;font-weight:800;text-transform:uppercase;letter-spacing:.12em;color:var(--t40);margin-bottom:5px;">Statut</div>
+            <select id="pfm-statut" style="width:100%;background:var(--t08);border:1px solid var(--border2);border-radius:var(--r-sm);padding:8px 12px;font-family:var(--font);font-size:12.5px;color:#fff;outline:none;">
+              ${statuts.map(o=>`<option value="${o}" ${(item?.statut||'Brouillon')===o?'selected':''}>${o}</option>`).join('')}
+            </select></div>
+          <div><div style="font-size:9px;font-weight:800;text-transform:uppercase;letter-spacing:.12em;color:var(--t40);margin-bottom:5px;">Date émission</div>
+            <input id="pfm-date" type="date" value="${item?.date||today}" style="width:100%;background:var(--t08);border:1px solid var(--border2);border-radius:var(--r-sm);padding:7px 12px;font-family:var(--font);font-size:12.5px;color:#fff;outline:none;"></div>
+          <div><div style="font-size:9px;font-weight:800;text-transform:uppercase;letter-spacing:.12em;color:var(--t40);margin-bottom:5px;">Date échéance</div>
+            <input id="pfm-date-ech" type="date" value="${item?.date_echeance||''}" style="width:100%;background:var(--t08);border:1px solid var(--border2);border-radius:var(--r-sm);padding:7px 12px;font-family:var(--font);font-size:12.5px;color:#fff;outline:none;"></div>
+          <div><div style="font-size:9px;font-weight:800;text-transform:uppercase;letter-spacing:.12em;color:var(--t40);margin-bottom:5px;">Numéro</div>
+            <input id="pfm-numero" type="text" value="${esc(item?.numero||'')}" placeholder="PDJ-2024-001…" style="width:100%;background:var(--t08);border:1px solid var(--border2);border-radius:var(--r-sm);padding:8px 12px;font-family:var(--font);font-size:12.5px;color:#fff;outline:none;"></div>
+          <div style="grid-column:1/-1;"><div style="font-size:9px;font-weight:800;text-transform:uppercase;letter-spacing:.12em;color:var(--t40);margin-bottom:5px;">Notes</div>
+            <textarea id="pfm-notes" rows="2" placeholder="Notes libres…" style="width:100%;background:var(--t08);border:1px solid var(--border2);border-radius:var(--r-sm);padding:8px 12px;font-family:var(--font);font-size:12.5px;color:#fff;outline:none;resize:vertical;box-sizing:border-box;">${esc(item?.notes||'')}</textarea></div>
+          <div style="grid-column:1/-1;">
+            <div id="pfm-err" style="font-size:11px;color:var(--pink);margin-bottom:8px;display:none;"></div>
+            <div style="display:flex;gap:8px;">
+              <button class="btn btn-green" style="flex:1;" onclick="PIL._saveFactureModal()">✓ ${isNew?'Créer':'Enregistrer'}</button>
+              <button class="btn btn-ghost" onclick="document.getElementById('pil-fac-modal')?.remove()">Annuler</button>
+            </div>
+          </div>
+        </div>
+      </div>`;
+    document.body.appendChild(overlay);
+    overlay.addEventListener('click',e=>{if(e.target===overlay)overlay.remove();});
+    overlay.addEventListener('keydown',e=>{if(e.key==='Escape')overlay.remove();});
+    this._facModalCallback=onSave;
+    this._facModalIdx=idx;
+    setTimeout(()=>{
+      SS.register('pfm-soc',()=>Object.values(STORE.clients).sort((a,b)=>a.name.localeCompare(b.name)).map(c=>({label:c.name,sub:c.sector||'',notionPageId:c.notionPageId||'',data:c})));
+      document.getElementById('pfm-nom')?.focus();
+    },60);
+  },
+
+  _saveFactureModal(){
+    const nom=(document.getElementById('pfm-nom')?.value||'').trim();
+    const errEl=document.getElementById('pfm-err');
+    if(!nom){if(errEl){errEl.textContent='Intitulé requis.';errEl.style.display='block';}document.getElementById('pfm-nom')?.focus();return;}
+    const socId=SS.getSocId('pfm-soc');
+    const picker=document.getElementById('pfm-dos-picker');
+    const hidden=document.getElementById('pfm-dos-hidden');
+    let dosIds=[];
+    if(picker)dosIds=[...picker.querySelectorAll('input[type=checkbox]:checked')].map(c=>c.dataset.dosId).filter(Boolean);
+    if(!dosIds.length&&hidden)try{dosIds=JSON.parse(hidden.value||'[]');}catch{}
+    let montant=parseFloat(document.getElementById('pfm-montant')?.value)||0;
+    if(!montant&&dosIds.length){const fd=STORE.dossiers[dosIds[0]];montant=fd?.honoraires>0?fd.honoraires:2000;}
+    if(!montant)montant=2000;
+    const result={
+      nom,
+      societe:socId?[socId]:[],
+      rel_dossiers:dosIds,
+      montant,
+      statut:document.getElementById('pfm-statut')?.value||'Brouillon',
+      date:document.getElementById('pfm-date')?.value||'',
+      date_echeance:document.getElementById('pfm-date-ech')?.value||'',
+      numero:document.getElementById('pfm-numero')?.value||'',
+      notes:document.getElementById('pfm-notes')?.value||'',
+    };
+    document.getElementById('pil-fac-modal')?.remove();
+    const cb=this._facModalCallback;
+    this._facModalCallback=null;
+    if(cb)cb(result);
+  },
+
   openCreateModal(collection, onCreated){
     document.getElementById('pil-create-modal')?.remove();
     const fields = this._fieldsFor(collection).filter(f=>f.type!=='relations'&&f.type!=='societe-search');
