@@ -997,6 +997,20 @@ const notionAPI = {
           if(el)el.innerHTML='<div class="mst err">\u26a0 Erreur 403 \u2014 L\u2019intégration n\u2019a pas accès à cette base.<br><small>Allez sur <strong>notion.so/my-integrations</strong> \u2192 votre intégration \u2192 <strong>Connecter à des pages</strong> \u2192 sélectionnez la base Sociétés CI.</small></div>';
         } else if(res.status===401){
           syncStatus('\u26a0 401 \u2014 Token invalide ou révoqué');
+        } else if(res.status===404){
+          const _dbKey=Object.entries(this.dbIds).find(([k,v])=>v&&path.includes(v.replace(/-/g,'')))?.[0]||'';
+          const _hint=_dbKey?'Base ['+_dbKey+']: '+this.dbIds[_dbKey]:'Vérifiez les IDs dans \u21ba Données \u2192 Notion \u2192 \xc9tape 3';
+          syncStatus('\u26a0 404 \u2014 Base Notion introuvable. '+_hint);
+          if(typeof toast==='function') toast('\u26a0 404 \u2014 Base introuvable'+(_dbKey?' : '+_dbKey:''),'warn');
+          const _ns=document.getElementById('m-notion-s');
+          if(_ns)_ns.innerHTML='<div class="mst err">'
+            +'\u26a0 <strong>Erreur 404 \u2014 Base Notion introuvable</strong><br>'
+            +'<span style="font-size:10.5px;">'+_hint+'<br><br>'
+            +'Causes : int\xe9gration non connect\xe9e, ID incorrect, base supprim\xe9e.<br>'
+            +'<a href="https://www.notion.so/my-integrations" target="_blank" style="color:var(--blue);">notion.so/my-integrations</a>'
+            +' \u2192 int\xe9gration \u2192 <strong>Connecter \xe0 des pages</strong></span><br>'
+            +'<button class="btn btn-blue btn-sm" style="margin-top:8px;font-size:10px;" onclick="mPrefillDbIds();mSaveDbIds();">R\xe9initialiser IDs PDJ</button>'
+            +'</div>';
         }
         return null;
       }
@@ -7134,10 +7148,11 @@ function mPrefillDbIds(){
 }
 function mSaveDbIds(){
   document.querySelectorAll('[data-db]').forEach(inp=>{
-    if(inp.value.trim())notionAPI.dbIds[inp.dataset.db]=inp.value.trim(); // conserver tirets
+    const raw=inp.value.trim();
+    if(raw){const norm=notionAPI._normalizeId(raw);notionAPI.dbIds[inp.dataset.db]=norm;if(norm!==raw)inp.value=norm;}
   });
   localStorage.setItem('pdj_notion_dbids',JSON.stringify(notionAPI.dbIds));
-  mSt('m-dbids-s','✓ IDs enregistrés. Écriture Notion activée.','ok');
+  mSt('m-dbids-s','✓ IDs enregistrés (normalisés UUID). Écriture Notion activée.','ok');
 }
 function mSetTransport(mode){
   notionAPI.transport=mode;
