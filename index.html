@@ -2713,6 +2713,12 @@ const SS = {
                   let hh=document.getElementById('ss-pid-'+_sI);
                   if(!hh){hh=document.createElement('input');hh.type='hidden';hh.id='ss-pid-'+_sI;document.body.appendChild(hh);}
                   hh.value=nc.notionPageId||nc.id;
+                  // Sync vers Notion si pas encore syncé
+                  if(!nc.notionPageId&&STORE.token&&notionAPI.proxyUrl&&notionAPI.dbIds.societes){
+                    notionAPI.syncClient(nc).then(()=>{
+                      hh.value=nc.notionPageId||nc.id;
+                    }).catch(()=>{});
+                  }
                 }
               },300);
             };
@@ -4276,6 +4282,15 @@ function ciNewClientConfirm(){
   STORE._saveLocal();
   document.getElementById('ci-nc-modal')?.remove();
   renderCISidebar();ciNav('client',id);toast('Client créé ✓');
+  // Sync vers Notion si token + proxy configurés
+  if(STORE.token&&notionAPI.proxyUrl&&notionAPI.dbIds.societes){
+    notionAPI.syncClient(STORE.clients[id]).then(p=>{
+      if(p){
+        toast('✓ '+STORE.clients[id]?.name+' syncé dans Notion','ok');
+        renderCISidebar();
+      }
+    }).catch(()=>{});
+  }
 }
 function ciNewDossier(clientId){
   // Supprimer un éventuel formulaire existant
@@ -4381,6 +4396,24 @@ function ciNewDossierConfirm(clientId){
   ciNav('dossier',clientId,did);
   const _clientName=STORE.clients[clientId]?.name||clientId;
   toast(_clientName+' — '+disp+' '+annee+' créé ✓');
+  // Sync vers Notion
+  if(STORE.token&&notionAPI.proxyUrl){
+    const _client=STORE.clients[clientId];
+    const _dos=STORE.dossiers[did];
+    const _syncDos=async()=>{
+      // 1. S'assurer que le client a un notionPageId
+      if(_client&&!_client.notionPageId&&notionAPI.dbIds.societes){
+        const cp=await notionAPI.syncClient(_client);
+        if(!cp) return;
+      }
+      // 2. Sync le dossier
+      if(_dos&&notionAPI.dbIds.dossiers){
+        const dp=await notionAPI.syncDossier(_dos);
+        if(dp) toast('✓ Dossier syncé dans Notion','ok');
+      }
+    };
+    _syncDos().catch(()=>{});
+  }
 }
 function dosEditLead(did){
   const d=STORE.dossiers[did];if(!d)return;
@@ -5840,9 +5873,33 @@ const PIL = {
     if(!STORE.notion[collection])STORE.notion[collection]=[];
     STORE.notion[collection].push(newItem);
     if(STORE.token){
-      const dbMap={livrables:'pil_livrables',reunions:'pil_reunions',factures:'pil_factures',societes:'pil_societes'};
-      const dbId=notionAPI.dbIds[dbMap[collection]];
-      if(dbId)notionAPI.createPage(dbId,this._toProps(collection,newItem)).then(p=>{if(p){newItem.id=p.id;newItem.url=p.url;}}).catch(()=>{});
+      if(collection==='societes'){
+        // Les sociétés vont dans la base Sociétés CI (pas pil_societes supprimée)
+        const _newClient=STORE.addClient(newItem.nom||newItem.name||'',
+          newItem.sector||'',newItem.contact||'',newItem.email||'');
+        if(_newClient&&notionAPI.proxyUrl&&notionAPI.dbIds.societes){
+          notionAPI.syncClient(STORE.clients[_newClient]).then(p=>{
+            if(p){
+              newItem.id=STORE.clients[_newClient].notionPageId||_newClient;
+              toast('✓ '+newItem.nom+' syncé dans Notion Sociétés CI','ok');
+            }
+          }).catch(()=>{});
+        }
+      } else {
+        const dbMap={livrables:'pil_livrables',reunions:'pil_reunions',factures:'pil_factures'};
+        const dbId=notionAPI.dbIds[dbMap[collection]];
+        if(dbId&&notionAPI.proxyUrl){
+          notionAPI.createPage(dbId,this._toProps(collection,newItem)).then(p=>{
+            if(p){
+              newItem.id=p.id;newItem.url=p.url;
+              try{localStorage.setItem('pdj_notion_'+collection,JSON.stringify(STORE.notion[collection]));}catch(e){}
+              toast('✓ Syncé dans Notion','ok');
+            } else {
+              toast('⚠ Erreur sync Notion — vérifiez console F12','warn');
+            }
+          }).catch(()=>{});
+        }
+      }
     }
     try{localStorage.setItem('pdj_notion_'+collection,JSON.stringify(STORE.notion[collection]));}catch(err){}
     document.getElementById('pil-create-modal')?.remove();
@@ -5942,6 +5999,19 @@ const PIL = {
     if(did&&priorite!=='Moyenne')STORE.updateDossier(did,'priorite',priorite);
     const newDossier=STORE.dossiers[did];
     toast((STORE.clients[clientId]?.name||clientId)+' — '+disp+' '+annee+' créé ✓');
+    // Sync vers Notion
+    if(STORE.token&&notionAPI.proxyUrl){
+      const _c2=STORE.clients[clientId];
+      const _d2=STORE.dossiers[did];
+      (async()=>{
+        if(_c2&&!_c2.notionPageId&&notionAPI.dbIds.societes)
+          await notionAPI.syncClient(_c2);
+        if(_d2&&notionAPI.dbIds.dossiers){
+          const r=await notionAPI.syncDossier(_d2);
+          if(r) toast('✓ Dossier syncé dans Notion','ok');
+        }
+      })().catch(()=>{});
+    }
     this.render();
     const cb=this._createModalCallback;
     this._createModalCallback=null;
