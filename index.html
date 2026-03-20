@@ -987,7 +987,8 @@ const notionAPI = {
       if (!res.ok) {
         const err = await res.json().catch(() => ({}));
         const msg = res.status + ' ' + (err?.message || err?.code || res.statusText || 'Erreur inconnue');
-        this._lastError = {status: res.status, message: msg, path};
+        this._lastError = {status: res.status, message: msg, path, body: err};
+        console.error('[notionAPI]', method, path, res.status, JSON.stringify(err).slice(0,200));
         console.warn('[notionAPI]', method, path, res.status, err?.message || '');
         // 403 : integration non connectée
         if(res.status===403){
@@ -1192,8 +1193,10 @@ const notionAPI = {
           console.log('[syncClient] Création OK:', client.name, page.id);
           if(typeof toast==='function') toast('✓ ' + client.name + ' ajouté dans Notion');
         } else {
-          console.error('[syncClient] Échec création. lastError:', JSON.stringify(this._lastError));
-          if(typeof toast==='function') toast('⚠ Échec sync ' + client.name + ' — voir console F12', 'warn');
+          const _le=this._lastError;
+          const _hint=_le?.status===400?'Champ invalide':_le?.status===403?'Intégration non connectée':_le?.status===401?'Token invalide':(_le?.message||'Voir F12');
+          console.error('[syncClient] Echec.',JSON.stringify(this._lastError));
+          if(typeof toast==='function') toast('⚠ Echec '+client.name+' — '+(_le?_le.status+': '+_hint:'Voir console F12'), 'warn');
         }
         return page;
       }
@@ -1295,12 +1298,16 @@ const notionAPI = {
     }));
 
     await loadCol('pil_factures', 'factures', p => ({
-      id: p.id,
-      url: p.url,
-      nom:     this._extractProp(p, 'Nom') || this._extractProp(p, 'Name') || '',
-      montant: this._extractProp(p, 'Montant') || 0,
-      statut:  this._extractProp(p, 'Statut') || this._extractProp(p, 'Status') || '',
-      date:    this._extractProp(p, 'Date') || '',
+      id: p.id, url: p.url,
+      nom:           this._extractProp(p, 'Intitulé') || this._extractProp(p, 'Nom') || '',
+      montant:       this._extractProp(p, 'Montant HT €') || this._extractProp(p, 'Montant') || 0,
+      statut:        this._extractProp(p, 'Statut') || 'Brouillon',
+      date:          this._extractProp(p, 'Date émission') || '',
+      date_echeance: this._extractProp(p, 'Date échéance') || '',
+      numero:        this._extractProp(p, 'Numéro') || '',
+      notes:         this._extractProp(p, 'Notes') || '',
+      societe:       this._extractProp(p, 'Société') || [],
+      rel_dossiers:  this._extractProp(p, 'Dossier CI') || [],
     }));
 
     // Peupler le STORE
@@ -4546,37 +4553,79 @@ function ciSyncClient(id){
 }
 
 // Pousse client + tous ses dossiers + toutes les lignes vers Notion
+function ciDiagnostic(){
+  const lines=[];
+  lines.push('Token: '+(STORE.token?'✓ OK':'? MANQUANT'));
+  lines.push('Proxy: '+(notionAPI.proxyUrl?'✓ '+notionAPI.proxyUrl.slice(0,40)+'...':'? MANQUANT'));
+  lines.push('DB Sociétés: '+(notionAPI.dbIds.societes?'✓':'? MANQUANT'));
+  lines.push('DB Dossiers: '+(notionAPI.dbIds.dossiers?'✓':'? MANQUANT'));
+  lines.push('DB Personnel: '+(notionAPI.dbIds.personnel?'✓':'? MANQUANT'));
+  const missing=[];
+  if(!STORE.token)missing.push('Token (Données → Notion → Etape 1)');
+  if(!notionAPI.proxyUrl)missing.push('Proxy (Données → Notion → Etape 2)');
+  if(!notionAPI.dbIds.dossiers)missing.push('IDs bases (Données → Notion → Etape 3 → Pré-remplir)');
+  console.log('[Diagnostic Notion]\n'+lines.join('\n'));
+  if(missing.length){
+    toast('⚠ Manquant: '+missing[0],'warn');
+  } else {
+    toast('✓ Configuration OK — Token + Proxy + IDs','ok');
+  }
+}
+
 async function ciSyncDossier(did){
-  const d=STORE.dossiers[did];if(!d){toast('⚠ Dossier introuvable','warn');return;}
-  if(!STORE.token){toast('⚠ Token Notion requis — ↺ Données → Étape 1','warn');return;}
-  if(!notionAPI.proxyUrl){toast('⚠ Proxy requis — ↺ Données → Étape 2','warn');return;}
+  const d=STORE.dossiers[did];
+  if(!d){toast('⚠ Dossier introuvable','warn');return;}
+  // Diagnostics préalables
+  if(!STORE.token){
+    toast('⚠ Token Notion manquant — ↺ Données → Notion → Étape 1','warn');return;
+  }
+  if(!notionAPI.proxyUrl){
+    toast('⚠ Proxy CORS manquant — ↺ Données → Notion → Étape 2','warn');return;
+  }
+  if(!notionAPI.dbIds.dossiers){
+    toast('⚠ ID base Dossiers CI non configuré — ↺ Données → Notion → Étape 3 → Pré-remplir','warn');return;
+  }
   const c=STORE.clients[d.clientId];
   const nom=(c?.name||d.clientId)+' — '+d.dispositif+' '+d.annee;
-  toast('⇄ Sync '+nom+' en cours…');
+  toast('⇄ Sync '+nom+'…');
   try{
-    // 1. S'assurer que le client a un notionPageId
-    if(c&&!c.notionPageId&&notionAPI.dbIds.societes){
+    // 1. Sync client si pas encore dans Notion
+    if(c&&!c.notionPageId){
+      if(!notionAPI.dbIds.societes){
+        toast('⚠ ID base Sociétés CI manquant — ↺ Données → Étape 3','warn');return;
+      }
       const cp=await notionAPI.syncClient(c);
-      if(!cp){toast('⚠ Impossible de créer le client dans Notion','warn');return;}
+      if(!cp){
+        const e=notionAPI._lastError;
+        toast('⚠ Création client échouée'+(e?' — '+e.status+': '+e.message:''),+'warn');return;
+      }
     }
     // 2. Sync le dossier
     const dp=await notionAPI.syncDossier(d);
-    if(!dp){toast('⚠ Erreur sync dossier — vérifiez la console F12','warn');return;}
-    // 3. Sync toutes les lignes (personnel, affectations, etc.)
+    if(!dp){
+      const e2=notionAPI._lastError;
+      const hint=e2?.status===400?'Champ invalide dans Notion — vérif. dossierProps':
+        e2?.status===403?'Intégration non connectée — notion.so/my-integrations':
+        e2?.status===401?'Token invalide ou révoqué':'';
+      toast('⚠ Sync dossier échoué'+(e2?' ('+e2.status+')':'')+(hint?' — '+hint:''),'warn');
+      console.error('[ciSyncDossier] syncDossier null. lastError:',notionAPI._lastError);
+      return;
+    }
+    // 3. Sync toutes les lignes
     let ok=1,err=0;
     for(const field of ['personnel','affectations','amortissements','prestations','subventions']){
       const rows=d[field]||[];
       for(let i=0;i<rows.length;i++){
         const r=await notionAPI.syncRow(did,field,i);
-        if(r)ok++;else err++;
+        if(r)ok++;
+        else{err++;console.warn('[ciSyncDossier] syncRow fail:',field,i,notionAPI._lastError);}
       }
     }
-    const msg='✓ '+nom+' syncé — '+(ok)+' élément(s)'+(err?' | ⚠ '+err+' échec(s)':'');
-    toast(msg,err?'warn':'ok');
-    // Re-render pour afficher le badge Notion
+    toast('✓ '+nom+' syncé — '+ok+' élément(s)'+(err?' | ⚠ '+err+' échec(s)':''),err?'warn':'ok');
     renderDossierView(document.getElementById('ci-content'));
   }catch(e){
-    toast('⚠ Erreur: '+e.message,'warn');
+    toast('⚠ Exception: '+e.message,'warn');
+    console.error('[ciSyncDossier]',e);
   }
 }
 
