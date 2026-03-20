@@ -4957,6 +4957,9 @@ function renderCockpit(){
   };
 
   // ── SECTION : KPIs + Alertes ─────────────────────────────
+  // KPIs filtres par lead
+  const _leadClients=_lead?allClients:Object.values(STORE.clients);
+  const _leadDossiers=Object.values(STORE.dossiers).filter(d=>!_lead||d.lead===_lead);
   const kpiSection=`<div style="display:grid;grid-template-columns:repeat(5,1fr);gap:12px;margin-bottom:18px;">
     ${[
       {k:'ca_cur',   l:'CA En Cours €',  cls:'kv-g', fmt:(v)=>v?EUR(v):'— €'},
@@ -4984,7 +4987,11 @@ function renderCockpit(){
   </div>`:'<div style="margin-bottom:12px;"><button class="btn btn-ghost btn-sm" style="font-size:10px;" onclick="(()=>{const ck=STORE.cockpit;if(!ck.alertes)ck.alertes=[];ck.alertes.push({type:\'amber\',texte:\'Nouvelle alerte…\'});STORE._saveLocal();renderCockpit();})()">＋ Alerte</button></div>';
 
   // ── SECTION : Clients actifs (source = STORE.clients = Espace CI) ─────────
-  const allClients = Object.values(STORE.clients).sort((a,b)=>a.name.localeCompare(b.name));
+  const _lead=STORE.currentLead||'';
+  const allClients = Object.values(STORE.clients).filter(c=>{
+    if(!_lead) return true;
+    return STORE.clientDossierIds(c.id).some(did=>STORE.dossiers[did]?.lead===_lead);
+  }).sort((a,b)=>a.name.localeCompare(b.name));
 
   // Calcul de l'action la plus proche (RDV ou livrable) par client
   const nextAction = (clientId) => {
@@ -5036,7 +5043,7 @@ function renderCockpit(){
 
   const clientSection=`<div class="card" style="margin-bottom:16px;">
     <div class="card-head">
-      <div class="card-title">🏢 Clients actifs</div>
+      <div class="card-title">🏢 ${_lead?'Clients — '+_lead:'Clients actifs'}</div>
       <button class="btn btn-blue btn-sm" onclick="ciNewClient()">＋ Nouveau</button>
     </div>
     <div style="overflow-x:auto;">
@@ -5204,9 +5211,11 @@ function renderCockpit(){
 
   // ── LIENS NOTION PILOTAGE ─────────────────────────────────
   const notionStats=(()=>{
-    const nbLiv=STORE.notion.livrables?.length||0;
-    const nbReu=STORE.notion.reunions?.length||0;
-    const urgent=(STORE.notion.livrables||[]).filter(l=>l.deadline&&new Date(l.deadline)-Date.now()<7*86400000&&l.statut!=='Terminé').length;
+    const _lvAll=_lead?(STORE.notion.livrables||[]).filter(l=>l.lead===_lead):(STORE.notion.livrables||[]);
+    const _ruAll=_lead?(STORE.notion.reunions||[]).filter(r=>r.lead===_lead):(STORE.notion.reunions||[]);
+    const nbLiv=_lvAll.length;
+    const nbReu=_ruAll.length;
+    const urgent=_lvAll.filter(l=>l.deadline&&new Date(l.deadline)-Date.now()<7*86400000&&l.statut!=='Terminé').length;
     return nbLiv||nbReu?`<div class="card" style="margin-bottom:16px;">
       <div class="card-head"><div class="card-title">🧭 Pilotage Notion</div><button class="btn btn-ghost btn-sm" onclick="nav('pilotage')">Ouvrir →</button></div>
       <div class="card-body" style="display:flex;gap:16px;flex-wrap:wrap;">
@@ -5220,8 +5229,8 @@ function renderCockpit(){
   // ── RENDER ────────────────────────────────────────────────
   document.getElementById('panel-cockpit').innerHTML=`<div class="cockpit-wrap">
     <div style="display:flex;align-items:baseline;gap:12px;margin-bottom:16px;">
-      <div class="page-title" style="margin:0;">Cockpit PDJ 2026</div>
-      <span style="font-size:11px;color:var(--t40);">Paul Froment · Direction</span>
+      <div class="page-title" style="margin:0;">Cockpit ${_lead?_lead:' PDJ 2026'}</div>
+      <span style="font-size:11px;color:var(--t40);">${_lead?('👤 Vue ' + _lead):'Portefeuille global · Direction'}</span>
       <button class="btn btn-ghost btn-sm" style="margin-left:auto;" onclick="renderCockpit()">↺ Rafraîchir</button>
     </div>
     ${kpiSection}
@@ -5887,16 +5896,17 @@ const PIL = {
   },
 
   _dashboard(){
-    const lv=STORE.notion.livrables||[];
-    const ru=STORE.notion.reunions||[];
+    const _dl=this.state.filterLead||'';
+    const lv=(_dl?(STORE.notion.livrables||[]).filter(l=>l.lead===_dl):(STORE.notion.livrables||[]));
+    const ru=(_dl?(STORE.notion.reunions||[]).filter(r=>r.lead===_dl):(STORE.notion.reunions||[]));
     const now=Date.now();
     const urgent=lv.filter(l=>l.deadline&&new Date(l.deadline+' ')-now<7*86400000&&l.statut!=='Terminé');
     return `<div>
       <div class="kpi-row">
         <div class="kpi-card"><div class="kpi-lbl">Livrables</div><div class="kpi-val gold">${lv.length}</div><div class="kpi-sub">${urgent.length} urgents</div></div>
         <div class="kpi-card"><div class="kpi-lbl">Réunions</div><div class="kpi-val">${ru.length}</div></div>
-        <div class="kpi-card"><div class="kpi-lbl">Dossiers CI</div><div class="kpi-val green">${Object.keys(STORE.dossiers).length}</div></div>
-        <div class="kpi-card"><div class="kpi-lbl">Clients</div><div class="kpi-val">${Object.keys(STORE.clients).length}</div></div>
+        <div class="kpi-card"><div class="kpi-lbl">Dossiers CI</div><div class="kpi-val green">${_dl?Object.values(STORE.dossiers).filter(d=>d.lead===_dl).length:Object.keys(STORE.dossiers).length}</div></div>
+        <div class="kpi-card"><div class="kpi-lbl">Clients</div><div class="kpi-val">${_dl?Object.values(STORE.clients).filter(c=>STORE.clientDossierIds(c.id).some(did=>STORE.dossiers[did]?.lead===_dl)).length:Object.keys(STORE.clients).length}</div></div>
       </div>
       ${urgent.length?`<div style="margin-bottom:16px;">
         <div class="pil-section-title">Livrables urgents</div>
@@ -5906,8 +5916,8 @@ const PIL = {
           const txt=diff<0?(-diff)+'j tard':diff===0?"Auj.":diff+'j';
           return `<div class="pil-item"><div class="pil-item-info"><div class="pil-item-title">${esc(l.nom||l.titre||'—')}</div></div><span class="pil-deadline ${cls}">${txt}</span></div>`;
         }).join('')}</div></div>`:''}
-      <div class="pil-section-title">Clients — Vue croisée</div>
-      <div class="pil-list-grid">${Object.values(STORE.getActiveClients()).slice(0,6).map(c=>{
+      <div class="pil-section-title">Clients — ${_dl?'Vue '+_dl:'Vue croisée'}</div>
+      <div class="pil-list-grid">${Object.values(STORE.getActiveClients()).filter(c=>!_dl||STORE.clientDossierIds(c.id).some(did=>STORE.dossiers[did]?.lead===_dl)).slice(0,6).map(c=>{
         const nbL=(STORE.notion.livrables||[]).filter(l=>l.societes?.includes(c.id)||l.societe===c.id).length;
         const nbR=(STORE.notion.reunions||[]).filter(r=>r.societes?.includes(c.id)||r.societe===c.id).length;
         const ciTot=STORE.clientDossierIds(c.id).reduce((s,did)=>s+(STORE.calcCI(STORE.dossiers[did]||{}).montantCI||0),0);
