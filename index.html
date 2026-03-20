@@ -1248,25 +1248,28 @@ const notionAPI = {
     await loadCol('pil_livrables', 'livrables', p => ({
       id: p.id,
       url: p.url,
-      nom:         this._extractProp(p, 'Nom') || this._extractProp(p, 'Name') || this._extractProp(p, 'Titre') || '',
-      statut:      this._extractProp(p, 'Statut') || this._extractProp(p, 'Status') || '',
-      deadline:    this._extractProp(p, 'Deadline') || this._extractProp(p, 'Date') || '',
-      responsable: this._extractProp(p, 'Responsable') || this._extractProp(p, 'Assignee') || '',
-      societes:    this._extractProp(p, 'Société') || this._extractProp(p, 'Client') || [],
+      nom:         this._extractProp(p, 'Titre') || this._extractProp(p, 'Nom') || this._extractProp(p, 'Name') || '',
+      statut:      this._extractProp(p, 'Statut') || '',
+      deadline:    this._extractProp(p, 'Deadline') || '',
+      priorite:    this._extractProp(p, 'Priorité') || '',
       lead:        this._extractProp(p, 'Lead') || '',
       societe:     this._extractProp(p, 'Société') || [],
+      notes:       this._extractProp(p, 'Notes') || '',
+      rel_dossiers: this._extractProp(p, 'Dossier CI') || [],
     }));
 
     await loadCol('pil_reunions', 'reunions', p => ({
       id: p.id,
       url: p.url,
-      nom:          this._extractProp(p, 'Nom') || this._extractProp(p, 'Name') || this._extractProp(p, 'Titre') || '',
+      nom:          this._extractProp(p, 'Titre') || this._extractProp(p, 'Nom') || this._extractProp(p, 'Name') || '',
       date:         this._extractProp(p, 'Date') || '',
-      statut:       this._extractProp(p, 'Statut') || this._extractProp(p, 'Status') || '',
-      participants: this._extractProp(p, 'Participants') || this._extractProp(p, 'Invités') || [],
-      societes:     this._extractProp(p, 'Société') || this._extractProp(p, 'Client') || [],
+      statut:       this._extractProp(p, 'Statut') || '',
+      priorite:     this._extractProp(p, 'Priorité') || '',
       lead:         this._extractProp(p, 'Lead') || '',
+      compte_rendu: this._extractProp(p, 'Compte-rendu') || '',
       societe:      this._extractProp(p, 'Société') || [],
+      rel_livrables: this._extractProp(p, 'Livrables liés') || [],
+      rel_dossiers:  this._extractProp(p, 'Dossier CI') || [],
     }));
 
     await loadCol('pil_societes', 'societes', p => ({
@@ -5229,8 +5232,8 @@ const PIL = {
     {key:'statut',label:'Statut',type:'select',opts:['À faire','En cours','En attente','À valider','Terminé','Annulé'],w:'120px'},
     {key:'priorite',label:'Priorité',type:'select',opts:['Haute','Moyenne','Basse'],w:'100px'},
     {key:'deadline',label:'Deadline',type:'date',w:'130px'},
-    {key:'responsable',label:'Responsable',type:'text',w:'120px'},
     {key:'lead',label:'Lead',type:'select',opts:['Paul','Guillaume','Axel','Lucile'],w:'120px'},
+    {key:'notes',label:'Notes',type:'text',w:'200px'},
     {key:'rel_dossiers',label:'Dossiers CI liés',type:'relations',w:'220px',createIn:'dossiers',
       getItems:()=>Object.values(STORE.dossiers).map(d=>{
         const cn=STORE.clients[d.clientId]?.name||d.clientId;
@@ -5426,9 +5429,13 @@ const PIL = {
     if(items[idx]){Object.assign(items[idx],updated);STORE.notion[col]=[...items];}
     if(items[idx]?.id&&STORE.token){
       const props=this._toProps(col,items[idx]);
-      notionAPI.updatePage(items[idx].id,props).catch(e=>{
+      notionAPI.updatePage(items[idx].id,props).then(r=>{
+        if(r) toast('✓ Syncé dans Notion','ok');
+        else toast('⚠ Erreur sync — vérifiez console F12','warn');
+      }).catch(e=>{
         const isCors=e?.message?.includes('Failed to fetch')||e?.name==='TypeError';
-        if(isCors&&!notionAPI.proxyUrl)toast('⚠ CORS — proxy requis pour sync Notion','err');
+        if(isCors&&!notionAPI.proxyUrl)toast('⚠ CORS — proxy requis','err');
+        else toast('⚠ Erreur sync: '+e.message,'warn');
       });
     }
     try{localStorage.setItem('pdj_notion_'+col,JSON.stringify(STORE.notion[col]));}catch(e){}
@@ -5679,7 +5686,6 @@ const PIL = {
       'Statut':P.select(item.statut||''),
       'Priorité':P.select(item.priorite||''),
       'Deadline':P.date(item.deadline||null),
-      'Responsable':P.text(item.responsable||''),
       ...(item.lead?{'Lead':P.select(item.lead)}:{}),
       ...(()=>{
         const ids=[].concat(item.societe||[]).map(id=>{
@@ -5688,6 +5694,13 @@ const PIL = {
         }).filter(Boolean);
         return ids.length?{'Société':P.relation(ids)}:{};
       })(),
+      ...(()=>{
+        const dids=[].concat(item.rel_dossiers||[]).map(id=>{
+          const d=STORE.dossiers[id];return d?d.notionPageId||null:null;
+        }).filter(Boolean);
+        return dids.length?{'Dossier CI':P.relation(dids)}:{};
+      })(),
+      ...(item.notes?{'Notes':P.text(item.notes)}:{}),
     };
     if(col==='reunions')return {
       'Titre':P.title(item.nom||''),
@@ -5702,6 +5715,19 @@ const PIL = {
           return c?c.notionPageId:null;
         }).filter(Boolean);
         return ids.length?{'Société':P.relation(ids)}:{};
+      })(),
+      ...(()=>{
+        const dids=[].concat(item.rel_dossiers||[]).map(id=>{
+          const d=STORE.dossiers[id];return d?d.notionPageId||null:null;
+        }).filter(Boolean);
+        return dids.length?{'Dossier CI':P.relation(dids)}:{};
+      })(),
+      ...(()=>{
+        const lids=[].concat(item.rel_livrables||[]).map(id=>{
+          const lv=(STORE.notion.livrables||[]).find(l=>l.id===id);
+          return lv?.id||null;
+        }).filter(Boolean);
+        return lids.length?{'Livrables liés':P.relation(lids)}:{};
       })(),
     };
     if(col==='societes')return {
