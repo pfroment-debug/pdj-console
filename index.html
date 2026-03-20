@@ -2216,7 +2216,9 @@ function renderPortfolio(){
   ];
   const cards=clients.map((c,i)=>{
     const dids=STORE.clientDossierIds(c.id);
-    const dossiers=dids.map(did=>STORE.dossiers[did]).filter(Boolean);
+    const _lf=STORE.currentLead||'';
+    const dossiers=dids.map(did=>STORE.dossiers[did]).filter(Boolean)
+      .filter(d=>!_lf||!d.lead||d.lead===_lf);
     const tot=dossiers.reduce((s,d)=>s+(STORE.calcCI(d).montantCI||0),0);
     const yr=Math.max(...dossiers.map(d=>d.annee),0);
     const latestCI=dossiers.filter(d=>d.annee===yr).reduce((s,d)=>s+(STORE.calcCI(d).montantCI||0),0);
@@ -2276,7 +2278,10 @@ function renderClientView(){
   const c=STORE.clients[_ciClientId];
   if(!c)return '<div style="padding:24px">Client introuvable</div>';
   const dids=STORE.clientDossierIds(c.id);
-  const dossiers=dids.map(did=>STORE.dossiers[did]).filter(Boolean).sort((a,b)=>b.annee-a.annee);
+  const _leadFilter=STORE.currentLead||'';
+  const dossiers=dids.map(did=>STORE.dossiers[did]).filter(Boolean)
+    .filter(d=>!_leadFilter||!d.lead||d.lead===_leadFilter)
+    .sort((a,b)=>b.annee-a.annee);
   const avClass=dossiers.some(d=>d.dispositif==='CIR')?'cc-av-b cl-hav':dossiers.some(d=>d.dispositif==='CII')?'cc-av-g cl-hav':'cc-av-n cl-hav';
   const nb=c.notionData;
   const notionPanel=nb&&(nb.livrables?.length||nb.reunions?.length)?`
@@ -7602,7 +7607,7 @@ const _LEADS=[
 function _clientMatchesLead(clientId, lead){
   if(!lead) return true; // Vue globale
   const dids = STORE.clientDossierIds(clientId);
-  // 1. Dossier avec ce lead
+  // 1. Dossier avec CE lead (strict : un dossier sans lead n'apparait pas dans les vues personnelles)
   if(dids.some(did=>STORE.dossiers[did]?.lead===lead)) return true;
   // 2. Livrable avec ce lead (lie a un dossier du client)
   const lv = STORE.notion.livrables||[];
