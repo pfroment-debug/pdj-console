@@ -951,11 +951,10 @@ const notionAPI = {
   })(),
 
   _headers() {
-    return {
-      'Authorization': 'Bearer ' + (STORE.token || ''),
-      'Content-Type':  'application/json',
-      'Notion-Version':'2022-06-28',
-    };
+    const h={'Authorization':'Bearer '+(STORE.token||''),'Content-Type':'application/json','Notion-Version':'2022-06-28'};
+    const sec=localStorage.getItem('pdj_worker_secret')||'';
+    if(sec)h['X-PDJ-Secret']=sec;
+    return h;
   },
 
   _url(path) {
@@ -1139,6 +1138,7 @@ const notionAPI = {
     }
     if(alertes.length) props['Alertes r\u00e9glementaires']=P.multiSelect(alertes);
     if(d.note_reglementaire) props['Note r\u00e9glementaire']=P.text(d.note_reglementaire);
+    props['Notes']=P.text(d.note_interne||'');
     if(clientNotionId) props['Soci\u00e9t\u00e9']=P.relation([clientNotionId]);
     return props;
   },
@@ -1431,6 +1431,7 @@ const notionAPI = {
           validation: this._extractProp(p, 'Validation') || false,
           honoraires: this._extractProp(p, 'Honoraires PDJ €') || 0,
           lead: this._extractLead(this._extractProp(p, 'Lead')||[]),
+          note_interne: this._extractProp(p,'Notes')||'',
           personnel:[], affectations:[], amortissements:[], prestations:[], subventions:[]
         };
         if (clients[clientId]) clients[clientId]._dossierIds.push(did);
@@ -1512,30 +1513,58 @@ const notionAPI = {
 };
 
 // Indicateur de sync dans la nav
+// SyncManager v2 : file ordonnee, dedup, retry exponentiel
 const syncIndicator = {
-  _pending: 0, _errCount: 0,
-  el() { return document.getElementById('sync-indicator'); },
-  start() {
-    this._pending++;
-    const el = this.el(); if(!el) return;
-    el.textContent = '\u29D7 sync\u2026';
-    el.style.color = '#c07830'; el.style.opacity = '1';
+  _queue:[], _running:false, _pending:0, _errCount:0,
+  _MAX_RETRY:3, _RETRY_MS:[800,2000,5000],
+  el(){return document.getElementById('sync-indicator');},
+  _badge(){
+    const el=this.el();if(!el)return;
+    if(this._pending>0){
+      el.textContent='\u29D7 '+this._pending+' en cours';
+      el.style.color='#c07830';el.style.opacity='1';
+    } else {
+      el.textContent=this._errCount>0?'\u26A0 '+this._errCount+' err':'\u2713 Notion sync\u00e9';
+      el.style.color=this._errCount>0?'#b22222':'#1d9e75';
+      el.style.cursor='pointer';
+      el.onclick=()=>openModal();
+      setTimeout(()=>{if(this._pending===0){el.style.opacity='0';this._errCount=0;}},3000);
+    }
   },
-  done(ok) {
-    this._pending = Math.max(0, this._pending-1);
-    if (!ok) this._errCount++;
-    const el = this.el(); if(!el) return;
-    if (this._pending > 0) return;
-    el.textContent = this._errCount > 0 ? '\u26A0 Notion partiel' : '\u2713 Notion sync\u00e9';
-    el.style.color  = this._errCount > 0 ? '#b22222' : '#1d9e75';
-    setTimeout(()=>{ if(this._pending===0){el.style.opacity='0';this._errCount=0;}}, 2500);
+  run(label,fn){
+    if(!STORE.token||!notionAPI.proxyUrl) return Promise.resolve(null);
+    // Deduplication : si meme label en attente, remplacer la fn
+    const ex=this._queue.find(q=>q.label===label);
+    if(ex){ex.fn=fn;return new Promise((res,rej)=>{ex.resolve=res;ex.reject=rej;});}
+    return new Promise((resolve,reject)=>{
+      this._queue.push({label,fn,resolve,reject,retries:0});
+      this._pending++;this._badge();this._flush();
+    });
   },
-  run(label, fn) {
-    if (!STORE.token) return Promise.resolve(null);
-    if (!notionAPI.proxyUrl) return Promise.resolve(null); // Pas de proxy = pas de sync silencieuse
-    this.start();
-    return Promise.resolve().then(fn).then(r=>{this.done(!!r);return r;}).catch(e=>{this.done(false);});
+  async _flush(){
+    if(this._running||!this._queue.length)return;
+    this._running=true;
+    const item=this._queue.shift();
+    try{
+      const result=await item.fn();
+      if(result===null&&item.retries<this._MAX_RETRY){
+        item.retries++;const delay=this._RETRY_MS[item.retries-1]||5000;
+        this._queue.unshift(item);this._running=false;
+        setTimeout(()=>this._flush(),delay);return;
+      }
+      this._pending=Math.max(0,this._pending-1);
+      if(!result)this._errCount++;item.resolve(result);
+    }catch(e){
+      console.warn('[SyncManager]',item.label,e.message);
+      this._pending=Math.max(0,this._pending-1);
+      this._errCount++;item.reject(e);
+    }
+    this._running=false;this._badge();
+    if(this._queue.length)setTimeout(()=>this._flush(),50);
   },
+  // Compat legacy
+  start(){this._pending++;this._badge();},
+  done(ok){this._pending=Math.max(0,this._pending-1);if(!ok)this._errCount++;this._badge();},
 };
 
 
@@ -1802,7 +1831,7 @@ const STORE = {
     const did=clientId+'_'+annee+'_'+dispositif+'_'+Date.now();
     const d={id:did,clientId,dispositif,annee,exercice,
       validation:false,montant_ci:null,base_calcul:null,honoraires:null,
-      priorite:'Moyenne',statut_jei:false,entreprise_nouvelle:false,
+      priorite:'Moyenne',statut_jei:false,entreprise_nouvelle:false,note_interne:'',
       personnel:[],affectations:[],amortissements:[],prestations:[],subventions:[]};
     this.dossiers[did]=d;
     if(this.clients[clientId]){
@@ -1909,8 +1938,13 @@ const STORE = {
                d.annee<2023?0.20:0.30; // CII
 
     // ── Plafond CII 400 k€ ────────────────────────────────────
-    const assCI = d.dispositif==='CII' ? Math.min(ass,400000) : ass;
-    const montantCI = Math.round(assCI*tx*100)/100;
+    let assCI, montantCI, palier_100m=false;
+    if(d.dispositif==='CII'){
+      assCI=Math.min(ass,400000); montantCI=Math.round(assCI*tx*100)/100;
+    } else if(d.dispositif==='CIR'&&ass>100000000){
+      palier_100m=true; assCI=ass;
+      montantCI=Math.round((100000000*0.30+(ass-100000000)*0.05)*100)/100;
+    } else { assCI=ass; montantCI=Math.round(assCI*tx*100)/100; }
 
     // ── Détail périodes 2025 pour affichage ───────────────────
     const periodes2025 = annee2025 ? {
@@ -1923,7 +1957,7 @@ const STORE = {
       ff_total:ff,
     } : null;
 
-    return {tp,ta,ff,inn,tpr,pc,tsv,ass,assCI,tx,
+    return {tp,ta,ff,inn,tpr,pc,tsv,ass,assCI,tx,palier_100m,
             montantCI,montantCIBrut:Math.round(ass*tx*100)/100,
             periodes2025,
             alerts:this._validateDossier(d,{tp,ta,ff,inn,tpr,pc,tsv,ass,tx,montantCI})};
@@ -1935,9 +1969,9 @@ const STORE = {
     // CII plafond 400k€
     if(d.dispositif==='CII'&&ci.ass>400000)
       alerts.push({level:'warn',code:'CII_PLAFOND',msg:`Assiette CII (${EUR(ci.ass)}) dépasse le plafond légal de 400 000 €. Crédit limité à ${EUR(Math.min(ci.ass,400000)*ci.tx)}.`});
-    // CIR dépassement 100M€ (taux réduit à 5%)
+    // CIR bi-palier 100M€ (taux 5% sur l'excédent)
     if(d.dispositif==='CIR'&&ci.ass>100000000)
-      alerts.push({level:'info',code:'CIR_SEUIL_100M',msg:`Assiette CIR > 100 M€. Le taux applicable sur l'excédent est réduit à 5%.`});
+      alerts.push({level:'info',code:'CIR_SEUIL_100M',msg:`Bi-palier CIR actif : 100M\u20ac \u00e0 30% + ${EUR(ci.ass-100000000)} d'exc\u00e9dent \u00e0 5%. CI eff. : ${EUR(ci.montantCI)} (taux effectif ${Math.round((ci.taux_effectif||0)*1000)/10}%).`});
     // Aucun chercheur
     if(!(d.personnel?.length>0))
       alerts.push({level:'warn',code:'NO_PERSONNEL',msg:'Aucun personnel R&D déclaré. Ajoutez des chercheurs/techniciens.'});
@@ -2343,6 +2377,7 @@ function renderDossierView(container){
     {id:'projets',l:'Projets'},{id:'personnel',l:'Personnel'},
     {id:'affectations',l:'Affectations'},{id:'amortissements',l:'Amortissements'},
     {id:'prestations',l:'Prestations'},{id:'subventions',l:'Subventions'},
+    {id:'notes',l:'Notes 📝'},
   ];
   container.innerHTML=`<div class="dos-view">
     <div class="dos-main">
@@ -2408,6 +2443,7 @@ function renderTab(d){
   if(_ciTab==='affectations')  return renderAffTab(d);
   if(_ciTab==='amortissements')return renderAmortTab(d);
   if(_ciTab==='prestations')   return renderPrestaTab(d);
+  if(_ciTab==='notes')       return renderNotesTab(d);
   if(_ciTab==='subventions')   return renderSubvTab(d);
   return '';
 }
@@ -2515,8 +2551,9 @@ function renderCalcPanel(d,ci){
     <div class="calc-result">
       <div class="calc-r-lbl">Montant CI (${fmtPct(ci.tx*100)})</div>
       <div class="calc-r-val">${EUR(ci.montantCI)}</div>
-      <div class="calc-r-rate">Assiette ${EUR(ci.ass)}</div>
+      <div class="calc-r-rate">Assiette ${EUR(ci.ass)}${ci.palier_100m?' \u2022 Taux effectif '+Math.round((ci.taux_effectif||0)*1000)/10+'%':''}</div>
       ${d.dispositif==='CII'&&ci.ass>400000?`<div style="font-size:10px;color:var(--pink);margin-top:4px;">⚠ Plafond 400k€ appliqué</div>`:''}
+      ${ci.palier_100m?`<div style="font-size:10px;color:#8899FF;margin-top:4px;">ℹ Bi-palier : 100M€à30% + exc.à5%</div>`:''}
     </div>
     ${d.statut_jei||d.entreprise_nouvelle?`<div style="margin-top:10px;">
       <label style="display:flex;align-items:center;gap:6px;font-size:11px;cursor:pointer;margin-bottom:5px;">
@@ -3534,6 +3571,50 @@ function renderSubvTab(d){
       
     </tr>`).join('')}</tbody></table></div>`;
 }
+
+// renderNotesTab : onglet Notes CI
+function renderNotesTab(d){
+  const note=d.note_interne||'';
+  return '<div style="padding:20px 24px;">'
+    +'<div style="display:flex;align-items:center;justify-content:space-between;margin-bottom:12px;">'
+    +'<div style="font-size:9.5px;font-weight:800;text-transform:uppercase;letter-spacing:.15em;color:var(--t40);">\uD83D\uDCDD Notes internes</div>'
+    +'<span style="font-size:9px;color:var(--t40);">Sauvegard\u00e9 dans Notion \u2014 champ Notes</span>'
+    +'</div>'
+    +'<textarea id="dos-note-'+d.id+'"'
+    +' style="width:100%;min-height:280px;background:rgba(0,0,0,.15);border:1px solid rgba(0,255,156,.15);border-radius:var(--r-sm);padding:14px 16px;font-family:var(--font);font-size:13px;color:#fff;outline:none;resize:vertical;line-height:1.6;box-sizing:border-box;"'
+    +' placeholder="Notes de suivi, contexte client, points r\u00e9glementaires..."'
+    +' oninput="_noteAutosave(\''+d.id+'\',this.value)">' +esc(note)+ '</textarea>'
+    +'<div id="dos-note-saved-'+d.id+'" style="font-size:10px;color:var(--t40);margin-top:6px;text-align:right;opacity:0;transition:opacity .3s;">\u2713 Sauvegard\u00e9</div>'
+    +'<div style="margin-top:14px;padding:10px 14px;background:rgba(24,0,255,.06);border-radius:var(--r-sm);border:1px solid rgba(24,0,255,.15);">'
+    +'<div style="font-size:9.5px;font-weight:800;text-transform:uppercase;letter-spacing:.12em;color:#8899FF;margin-bottom:6px;">Aide \u00e0 la r\u00e9daction</div>'
+    +'<div style="font-size:11px;color:var(--t60);line-height:1.7;">'
+    +'\u2022 Contexte R&D client (historique CIR, projets en cours)<br>'
+    +'\u2022 Engagement PDJ (montant, interlocuteurs, calendrier)<br>'
+    +'\u2022 Points d\'attention r\u00e9glementaires<br>'
+    +'\u2022 Documents manquants ou \u00e0 relancer<br>'
+    +'\u2022 Historique des \u00e9changes DGFIP / expert-comptable'
+    +'</div></div></div>';
+}
+const _noteAutosave=(()=>{
+  const _t={};
+  return (did,val)=>{
+    clearTimeout(_t[did]);
+    _t[did]=setTimeout(()=>{
+      const d=STORE.dossiers[did];if(!d)return;
+      d.note_interne=val;STORE._saveLocal();
+      if(STORE.token&&notionAPI.proxyUrl&&d.notionPageId){
+        const cid=STORE.clients[d.clientId]?.notionPageId||null;
+        notionAPI.updatePage(d.notionPageId,notionAPI.dossierProps(d,cid)).then(()=>{
+          const el=document.getElementById('dos-note-saved-'+did);
+          if(el){el.textContent='\u2713 Sync Notion';el.style.opacity='1';setTimeout(()=>el.style.opacity='0',2000);}
+        });
+      } else {
+        const el=document.getElementById('dos-note-saved-'+did);
+        if(el){el.textContent='\u2713 Local';el.style.opacity='1';setTimeout(()=>el.style.opacity='0',2000);}
+      }
+    },800);
+  };
+})();
 
 // ─── Add helpers ──────────────────────────────────────────
 
@@ -5555,7 +5636,7 @@ function renderCockpit(){
 // PDJ PILOTAGE — Vanilla JS complet
 // ═══════════════════════════════════════════════════════════
 const PIL = {
-  state:{tab:'dashboard',token:null,loading:false,error:null,showTokenBar:false,editItem:null,newItem:null,openDetail:null,_createModalCallback:null,filterLead:''},
+  state:{tab:'dashboard',token:null,loading:false,error:null,showTokenBar:false,editItem:null,newItem:null,openDetail:null,_createModalCallback:null,filterLead:'',filterStatut:'',filterPrio:'',_calYear:0,_calMonth:-1,_calInit:false},
 
   mount(){
     const root=document.getElementById('pil-root');if(!root)return;
@@ -5568,7 +5649,7 @@ const PIL = {
 
   render(){
     const root=document.getElementById('pil-root');if(!root)return;
-    const tabs={dashboard:'Dashboard',livrables:'Livrables',reunions:'Réunions',pipeline:'Pipeline',factures:'Factures'};
+    const tabs={dashboard:'Dashboard',livrables:'Livrables',reunions:'Réunions',pipeline:'Pipeline',factures:'Factures',calendrier:'\uD83D\uDCC5 Calendrier'};
     const tok=this.state.token;
     root.innerHTML=`<div class="pil-wrap">
       <div class="pil-tabs">
@@ -5595,7 +5676,7 @@ const PIL = {
     });},10);
   },
 
-  setTab(t){this.state.tab=t;this.state.editItem=null;this.state.newItem=null;this.state.openDetail=null;this.render();},
+  setTab(t){this.state.tab=t;this.state.editItem=null;this.state.newItem=null;this.state.openDetail=null;this.state.filterStatut='';this.state.filterPrio='';this.render();},
   setLead(lead){this.state.filterLead=lead;this.state.editItem=null;this.state.newItem=null;this.state.openDetail=null;
     if(typeof STORE!=='undefined'&&STORE.currentLead!==lead){STORE.currentLead=lead;localStorage.setItem('pdj_current_lead',lead);if(typeof _updateLeadBadge==='function')_updateLeadBadge(lead);}
     this.render();},
@@ -5641,6 +5722,7 @@ const PIL = {
     if(t==='reunions') return this._leadBar()+this._list('reunions','Réunions',this._reuFields());
     if(t==='pipeline') return this._pipeline();
     if(t==='factures') return this._list('factures','Factures',this._facFields());
+    if(t==='calendrier') return this._calendar();
     return '';
   },
 
@@ -5659,7 +5741,23 @@ const PIL = {
         onclick="PIL.setLead('')">🌐 Tous</button>
       ${leads.map(l=>`<button style="${btnStyle(l)}padding:3px 12px;border-radius:99px;font-family:var(--font);font-size:11px;font-weight:600;cursor:pointer;"
         onclick="PIL.setLead('${l}')">\uD83D\uDC64 ${l}</button>`).join('')}
-      ${cur?`<span style="font-size:10px;color:var(--t40);margin-left:6px;">Filtré — <strong style="color:${colors[cur]||'#fff'}">${cur}</strong></span>`:''}  
+      ${cur?`<span style="font-size:10px;color:var(--t40);margin-left:6px;">Filtr\u00e9 \u2014 <strong style="color:${colors[cur]||'#fff'}">${cur}</strong></span>`:''}
+    </div>
+    <div style="display:flex;align-items:center;gap:5px;padding:5px 0 6px;flex-wrap:wrap;">
+      <span style="font-size:9px;font-weight:800;text-transform:uppercase;letter-spacing:.12em;color:var(--t40);">Statut:</span>
+      ${(PIL.state.tab==='reunions'?['','Planifi\u00e9e','R\u00e9alis\u00e9e','\u00c0 valider','Annul\u00e9e']:['','\u00c0 faire','En cours','En attente','\u00c0 valider','Termin\u00e9','Annul\u00e9']).map(s=>{
+        const a=PIL.state.filterStatut===s;
+        return `<button style="${a?'background:rgba(0,255,156,.15);color:var(--green);border:1px solid var(--green);':'background:var(--t08);color:var(--t60);border:1px solid var(--border);'}padding:2px 8px;border-radius:99px;font-family:var(--font);font-size:10px;cursor:pointer;"
+          onclick="PIL.state.filterStatut='${s}';PIL.render()">${s||'Tous'}</button>`;
+      }).join('')}
+      <span style="font-size:9px;font-weight:800;text-transform:uppercase;letter-spacing:.12em;color:var(--t40);margin-left:6px;">Priorit\u00e9:</span>
+      ${['','Haute','Moyenne','Basse'].map(p=>{
+        const a=PIL.state.filterPrio===p;
+        const pc=p==='Haute'?'var(--pink)':p==='Basse'?'var(--t40)':'var(--gold)';
+        return `<button style="${a?'background:rgba(255,255,255,.1);color:'+pc+';border:1px solid '+pc+';':'background:var(--t08);color:var(--t60);border:1px solid var(--border);'}padding:2px 8px;border-radius:99px;font-family:var(--font);font-size:10px;cursor:pointer;"
+          onclick="PIL.state.filterPrio='${p}';PIL.render()">${p||'Toutes'}</button>`;
+      }).join('')}
+      ${(PIL.state.filterStatut||PIL.state.filterPrio)?`<button style="background:rgba(249,21,117,.1);color:var(--pink);border:1px solid rgba(249,21,117,.2);padding:2px 8px;border-radius:99px;font-family:var(--font);font-size:10px;cursor:pointer;" onclick="PIL.state.filterStatut='';PIL.state.filterPrio='';PIL.render();">&times; Effacer</button>`:''}
     </div>`;
   },
 
@@ -5813,7 +5911,13 @@ const PIL = {
     // Appliquer le filtre Lead si actif
     const _allItems=STORE.notion[col]||[];
     const _lead=this.state.filterLead||'';
-    const items=_allItems.filter(it=>_itemMatchesLead(it,_lead));
+    const _fs=this.state.filterStatut||'',_fp=this.state.filterPrio||'';
+    const items=_allItems.filter(it=>{
+      if(!_itemMatchesLead(it,_lead))return false;
+      if(_fs&&it.statut!==_fs)return false;
+      if(_fp&&it.priorite!==_fp)return false;
+      return true;
+    });
     const editIdx=this.state.editItem?.collection===col?this.state.editItem.idx:null;
     const isNew=this.state.newItem?.collection===col;
     const fbar=(item,prefix,saveLabel,saveFn,cancelFn)=>`<div style="display:flex;gap:8px;flex-wrap:wrap;align-items:flex-end;padding:10px 12px;background:rgba(0,255,156,.04);border-bottom:1px solid rgba(0,255,156,.1);margin-bottom:6px;">
@@ -5854,7 +5958,7 @@ const PIL = {
     }).join('');
     return `<div>
       <div style="display:flex;align-items:center;justify-content:space-between;margin-bottom:10px;">
-        <div class="pil-section-title">${title} (${items.length}${_lead&&_allItems.length!==items.length?' / '+_allItems.length:''})</div>
+        <div class="pil-section-title">${title} <span style="font-weight:600;">(${items.length}${_allItems.length!==items.length?' / '+_allItems.length+'':''}</span>${_allItems.length!==items.length?`<span style="font-size:9px;color:var(--pink);margin-left:5px;">&bull; filtr\u00e9</span>`:''})</div>
         <div style="display:flex;gap:6px;"><button class="btn btn-ghost btn-sm" onclick="PIL.fetchAll()">↺</button><button class="btn btn-ink btn-sm" onclick="PIL.startNew('${col}')">＋ Nouveau</button></div>
       </div>
       ${totLine}
@@ -6904,6 +7008,65 @@ const PIL = {
     });
   },
 
+  _calendar(){
+    const _lead=this.state.filterLead||'';
+    if(!this.state._calYear){this.state._calYear=new Date().getFullYear();}
+    if(!this.state._calInit){this.state._calYear=new Date().getFullYear();this.state._calMonth=new Date().getMonth();this.state._calInit=true;}
+    const yr=this.state._calYear, mo=this.state._calMonth;
+    const MO=['Janvier','F\u00e9vrier','Mars','Avril','Mai','Juin','Juillet','Ao\u00fbt','Septembre','Octobre','Novembre','D\u00e9cembre'];
+    const DAYS=['Lu','Ma','Me','Je','Ve','Sa','Di'];
+    const COLORS={Paul:'#378ADD',Guillaume:'#8877EE',Axel:'#00CC7A',Lucile:'#F91575'};
+    const lastDay=new Date(yr,mo+1,0).getDate();
+    const startDow=(new Date(yr,mo,1).getDay()+6)%7;
+    const todayStr=new Date().toISOString().slice(0,10);
+    const items={};
+    const lv=(STORE.notion.livrables||[]).filter(l=>(!_lead||l.lead===_lead||!l.lead)&&l.deadline);
+    const ru=(STORE.notion.reunions||[]).filter(r=>(!_lead||r.lead===_lead||!r.lead)&&r.date);
+    lv.forEach(l=>{
+      const d=new Date(l.deadline+' ');
+      if(d.getFullYear()===yr&&d.getMonth()===mo){if(!items[l.deadline])items[l.deadline]=[];
+      items[l.deadline].push({type:'lv',item:l,color:COLORS[l.lead]||'#8899FF'});}
+    });
+    ru.forEach(r=>{
+      const d=new Date(r.date+' ');
+      if(d.getFullYear()===yr&&d.getMonth()===mo){if(!items[r.date])items[r.date]=[];
+      items[r.date].push({type:'reu',item:r,color:COLORS[r.lead]||'#F91575'});}
+    });
+    const cells=[];
+    for(let i=0;i<startDow;i++)cells.push({empty:true});
+    for(let d=1;d<=lastDay;d++){
+      const iso=yr+'-'+String(mo+1).padStart(2,'0')+'-'+String(d).padStart(2,'0');
+      cells.push({d,iso,today:iso===todayStr,items:items[iso]||[]});
+    }
+    while(cells.length%7!==0)cells.push({empty:true});
+    return '<div style="padding:12px 0;">'
+      +'<div style="display:flex;align-items:center;gap:10px;margin-bottom:12px;">'
+      +'<button class="btn btn-ghost btn-sm" onclick="PIL.state._calMonth--;if(PIL.state._calMonth<0){PIL.state._calMonth=11;PIL.state._calYear--;}PIL.render()">&lsaquo;</button>'
+      +'<div style="flex:1;text-align:center;font-size:16px;font-weight:800;">'+MO[mo]+' '+yr+'</div>'
+      +'<button class="btn btn-ghost btn-sm" onclick="PIL.state._calMonth++;if(PIL.state._calMonth>11){PIL.state._calMonth=0;PIL.state._calYear++;}PIL.render()">&rsaquo;</button>'
+      +'<button class="btn btn-ghost btn-sm" onclick="PIL.state._calYear=new Date().getFullYear();PIL.state._calMonth=new Date().getMonth();PIL.render()">Auj.</button>'
+      +'</div>'
+      +this._leadBar()
+      +'<div style="display:grid;grid-template-columns:repeat(7,1fr);gap:1px;background:rgba(255,255,255,.06);border-radius:var(--r-sm);overflow:hidden;">'
+      +DAYS.map(d=>'<div style="padding:6px;text-align:center;font-size:9.5px;font-weight:800;text-transform:uppercase;letter-spacing:.12em;color:var(--t40);background:var(--navy-card);">'+d+'</div>').join('')
+      +cells.map(c=>{
+        if(c.empty)return '<div style="background:rgba(0,0,0,.15);min-height:76px;"></div>';
+        const isT=c.today;
+        return '<div style="background:'+(isT?'rgba(0,255,156,.06)':'var(--navy-card)')+';border-top:'+(isT?'2px solid var(--green)':'1px solid rgba(255,255,255,.04)')+';min-height:76px;padding:4px;">'
+          +'<div style="font-size:10px;font-weight:'+(isT?800:600)+';color:'+(isT?'var(--green)':'var(--t60)')+';margin-bottom:3px;">'+c.d+'</div>'
+          +(c.items.slice(0,3).map(it=>'<div style="padding:2px 4px;border-radius:3px;background:'+it.color+'22;border-left:2px solid '+it.color+';margin-bottom:2px;cursor:pointer;font-size:9px;overflow:hidden;white-space:nowrap;text-overflow:ellipsis;" title="'+esc(it.item.nom||'')+'"\''
+            +' onclick="PIL.setTab(\''+( it.type==='lv'?'livrables':'reunions')+'\')">'
+            +(it.type==='lv'?'\uD83D\uDCE6':'\uD83D\uDCC5')+' '+esc((it.item.nom||'').slice(0,16))+'</div>').join(''))
+          +(c.items.length>3?'<div style="font-size:8px;color:var(--t40);padding:1px 3px;">+'+( c.items.length-3)+' autres</div>':'')
+          +'</div>';
+      }).join('')
+      +'</div>'
+      +'<div style="margin-top:8px;display:flex;gap:12px;flex-wrap:wrap;">'
+      +'<span style="font-size:10px;color:var(--t40);">\uD83D\uDCE6 Livrable</span><span style="font-size:10px;color:var(--t40);">\uD83D\uDCC5 R\u00e9union</span>'
+      +Object.entries(COLORS).map(([l,c])=>'<span style="font-size:10px;color:'+c+';">&#9632; '+l+'</span>').join('')
+      +'</div></div>';
+  },
+
   _pipeline(){
     const clients = Object.values(STORE.getActiveClients()).sort((a,b)=>a.name.localeCompare(b.name));
     const fields = this._pipFields();
@@ -7154,6 +7317,7 @@ function openModal(){
   // Peupler forms
   const tok=STORE.token||''; document.getElementById('m-token').value=tok;
   const prx=notionAPI.proxyUrl||''; document.getElementById('m-proxy').value=prx;
+  const sec=localStorage.getItem('pdj_worker_secret')||''; const secEl=document.getElementById('m-worker-secret'); if(secEl)secEl.value=sec;
   // DB IDs form
   const dbs=['societes','dossiers','personnel','affectations','amortissements','prestations','subventions',
     'pil_livrables','pil_reunions','pil_factures'];
@@ -7259,6 +7423,12 @@ function mRefreshTransportUI(){
   document.querySelectorAll('input[name="transport"]').forEach(r=>{r.checked=r.value===mode;});
 }
 
+function mSaveWorkerSecret(){
+  const sec=(document.getElementById('m-worker-secret')?.value||'').trim();
+  if(sec)localStorage.setItem('pdj_worker_secret',sec);
+  else localStorage.removeItem('pdj_worker_secret');
+  mSt('m-proxy-s','\u2713 Worker Secret '+(sec?'enregistr\u00e9':'effac\u00e9')+'.','ok');
+}
 function mSaveProxy(){
   const url=document.getElementById('m-proxy')?.value.trim();
   notionAPI.proxyUrl=url||''; localStorage.setItem('pdj_notion_proxy',url||'');
@@ -7642,6 +7812,20 @@ function _updateLeadBadge(lead){
   const brdColor=cfg.lead?(cfg.lead==='Paul'?'#378ADD':cfg.lead==='Guillaume'?'#8877EE':cfg.lead==='Axel'?'#00FF9C':'#F91575'):'var(--border2)';
   av.style.border='2px solid '+brdColor;
   av.style.boxShadow=cfg.lead?'0 0 8px '+brdColor+'44':'';
+  // Bandeau permanent en haut de page
+  let banner=document.getElementById('lead-active-banner');
+  if(lead){
+    if(!banner){banner=document.createElement('div');banner.id='lead-active-banner';
+      banner.style.cssText='position:fixed;top:0;left:0;right:0;z-index:2000;display:flex;align-items:center;justify-content:space-between;padding:3px 16px;font-size:10px;font-weight:700;';
+      document.body.appendChild(banner);}
+    banner.style.background=cfg.bg;banner.style.color=cfg.color;
+    banner.innerHTML='<span>\uD83D\uDC64 Vue '+cfg.lbl+' \u2014 filtrage actif</span>'
+      +'<button onclick="STORE.setLead(\'\')" style="background:rgba(0,0,0,.25);border:1px solid rgba(255,255,255,.25);border-radius:4px;color:'+cfg.color+';font-family:var(--font);font-size:10px;padding:1px 8px;cursor:pointer;">\u00d7 Vue globale</button>';
+    document.body.style.paddingTop='24px';
+  } else {
+    if(banner)banner.remove();
+    document.body.style.paddingTop='';
+  }
 }
 function toggleLeadMenu(){
   const existing=document.getElementById('lead-vm');
