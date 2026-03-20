@@ -1489,6 +1489,7 @@ const syncIndicator = {
   },
   run(label, fn) {
     if (!STORE.token) return Promise.resolve(null);
+    if (!notionAPI.proxyUrl) return Promise.resolve(null); // Pas de proxy = pas de sync silencieuse
     this.start();
     return Promise.resolve().then(fn).then(r=>{this.done(!!r);return r;}).catch(e=>{this.done(false);});
   },
@@ -4601,6 +4602,82 @@ function pfmCreateDossier(){
   });
 }
 
+function pfmCreateSociete(){
+  // Mini-modale creation societe sans quitter la modale facture
+  document.getElementById('pfm-soc-form')?.remove();
+  const form=document.createElement('div');
+  form.id='pfm-soc-form';
+  form.style.cssText='position:fixed;z-index:99999;background:#0c0f3e;border:1px solid rgba(0,255,156,.3);border-radius:10px;box-shadow:0 16px 48px rgba(0,0,0,.8);padding:16px 18px;min-width:320px;';
+  // Positionner sous le champ pfm-soc
+  const socEl=document.getElementById('pfm-soc');
+  if(socEl){
+    const r=socEl.getBoundingClientRect();
+    form.style.top=(r.bottom+4)+'px';
+    form.style.left=r.left+'px';
+    form.style.width=Math.max(r.width,320)+'px';
+  }
+  const typedName=(document.getElementById('pfm-soc')?.value||'').trim();
+  form.innerHTML=
+    '<div style="font-size:9px;font-weight:800;text-transform:uppercase;letter-spacing:.15em;color:var(--green);margin-bottom:12px;">Nouvelle société / client</div>'
+    +'<div style="display:grid;grid-template-columns:1fr 1fr;gap:8px;margin-bottom:10px;">'
+      +'<div style="grid-column:1/-1;"><div style="font-size:9px;font-weight:700;text-transform:uppercase;color:var(--t40);margin-bottom:3px;">Raison sociale *</div>'
+        +'<input id="pfm-nc-name" type="text" value="'+esc(typedName)+'" placeholder="Ex: CNIEL, Resan SAS…" style="width:100%;background:var(--t08);border:1px solid var(--border2);border-radius:5px;padding:7px 10px;font-family:var(--font);font-size:12.5px;color:#fff;outline:none;box-sizing:border-box;"></div>'
+      +'<div><div style="font-size:9px;font-weight:700;text-transform:uppercase;color:var(--t40);margin-bottom:3px;">Secteur</div>'
+        +'<input id="pfm-nc-sector" type="text" placeholder="Agro, Pharma…" style="width:100%;background:var(--t08);border:1px solid var(--border2);border-radius:5px;padding:7px 10px;font-family:var(--font);font-size:12px;color:#fff;outline:none;box-sizing:border-box;"></div>'
+      +'<div><div style="font-size:9px;font-weight:700;text-transform:uppercase;color:var(--t40);margin-bottom:3px;">Contact</div>'
+        +'<input id="pfm-nc-contact" type="text" placeholder="Jean Dupont" style="width:100%;background:var(--t08);border:1px solid var(--border2);border-radius:5px;padding:7px 10px;font-family:var(--font);font-size:12px;color:#fff;outline:none;box-sizing:border-box;"></div>'
+    +'</div>'
+    +'<div id="pfm-nc-err" style="font-size:10.5px;color:var(--pink);margin-bottom:7px;display:none;"></div>'
+    +'<div style="display:flex;gap:7px;">'
+      +'<button onmousedown="event.preventDefault();pfmConfirmSociete()" style="flex:1;padding:7px;border-radius:7px;border:none;background:var(--green);color:#090B33;font-family:var(--font);font-size:12px;font-weight:800;cursor:pointer;">Créer</button>'
+      +'<button onmousedown="event.preventDefault();document.getElementById(\'pfm-soc-form\')?.remove()" style="padding:7px 12px;border-radius:7px;border:1px solid rgba(255,255,255,.15);background:transparent;color:rgba(255,255,255,.6);font-family:var(--font);font-size:12px;cursor:pointer;">Annuler</button>'
+    +'</div>';
+  document.body.appendChild(form);
+  setTimeout(()=>{
+    document.getElementById('pfm-nc-name')?.focus();
+    document.addEventListener('pointerdown',function _pcs(e){
+      if(!form.contains(e.target)&&e.target.id!=='pfm-soc'){
+        form.remove();document.removeEventListener('pointerdown',_pcs,true);
+      }
+    },{capture:true});
+  },60);
+}
+
+function pfmConfirmSociete(){
+  const name=(document.getElementById('pfm-nc-name')?.value||'').trim();
+  const errEl=document.getElementById('pfm-nc-err');
+  if(!name){
+    if(errEl){errEl.textContent='La raison sociale est requise.';errEl.style.display='block';}
+    document.getElementById('pfm-nc-name')?.focus();return;
+  }
+  const sector=(document.getElementById('pfm-nc-sector')?.value||'').trim();
+  const contact=(document.getElementById('pfm-nc-contact')?.value||'').trim();
+  // Creer le client dans STORE
+  const id=STORE.addClient(name,sector,contact,'');
+  if(!id){if(errEl){errEl.textContent='Erreur lors de la création.';errEl.style.display='block';}return;}
+  // Remplir le champ pfm-soc
+  const socEl=document.getElementById('pfm-soc');
+  if(socEl){socEl.value=name;socEl.style.borderColor='rgba(0,255,156,.6)';}
+  // Stocker le pid SS
+  let hh=document.getElementById('ss-pid-pfm-soc');
+  if(!hh){hh=document.createElement('input');hh.type='hidden';hh.id='ss-pid-pfm-soc';document.body.appendChild(hh);}
+  hh.value=STORE.clients[id]?.notionPageId||id;
+  // Sync vers Notion
+  if(STORE.token&&notionAPI.proxyUrl&&notionAPI.dbIds.societes){
+    notionAPI.syncClient(STORE.clients[id]).then(p=>{
+      if(p){
+        hh.value=STORE.clients[id]?.notionPageId||id;
+        toast('✓ '+name+' créé et syncé dans Notion','ok');
+      }
+    }).catch(()=>{});
+  } else {
+    toast('✓ '+name+' créé','ok');
+  }
+  document.getElementById('pfm-soc-form')?.remove();
+  // Mettre a jour le SS dropdown s'il est ouvert
+  SS.clear();
+}
+
 function pfmOpenDosPicker(){
   const picker=document.getElementById('pfm-dos-picker');
   const tags=document.getElementById('pfm-dos-tags');
@@ -5745,7 +5822,7 @@ const PIL = {
     const updated=this._readForm('pil-ed',fields);
     const items=STORE.notion[col]||[];
     if(items[idx]){Object.assign(items[idx],updated);STORE.notion[col]=[...items];}
-    if(items[idx]?.id&&STORE.token){
+    if(items[idx]?.id&&!String(items[idx].id).startsWith('local-')&&STORE.token&&notionAPI.proxyUrl){
       const props=this._toProps(col,items[idx]);
       notionAPI.updatePage(items[idx].id,props).then(r=>{
         if(r) toast('✓ Syncé dans Notion','ok');
@@ -6016,7 +6093,9 @@ const PIL = {
       })(),
       ...(()=>{
         const dids=[].concat(item.rel_dossiers||[]).map(id=>{
-          const d=STORE.dossiers[id];return d?d.notionPageId||null:null;
+          // id peut etre un ID local OU un notionPageId (si chargé depuis Notion)
+          const d=STORE.dossiers[id]||Object.values(STORE.dossiers).find(d2=>d2.notionPageId===id);
+          return d?d.notionPageId||null:null;
         }).filter(Boolean);
         return dids.length?{'Dossier CI':P.relation(dids)}:{};
       })(),
@@ -6038,14 +6117,16 @@ const PIL = {
       })(),
       ...(()=>{
         const dids=[].concat(item.rel_dossiers||[]).map(id=>{
-          const d=STORE.dossiers[id];return d?d.notionPageId||null:null;
+          const d=STORE.dossiers[id]||Object.values(STORE.dossiers).find(d2=>d2.notionPageId===id);
+          return d?d.notionPageId||null:null;
         }).filter(Boolean);
         return dids.length?{'Dossier CI':P.relation(dids)}:{};
       })(),
       ...(()=>{
         const lids=[].concat(item.rel_livrables||[]).map(id=>{
-          const lv=(STORE.notion.livrables||[]).find(l=>l.id===id);
-          return lv?.id||null;
+          // id peut etre un notionPageId Notion (format UUID)
+          const lv=(STORE.notion.livrables||[]).find(l=>l.id===id||l.url?.includes(id));
+          return lv?.id||id||null;
         }).filter(Boolean);
         return lids.length?{'Livrables liés':P.relation(lids)}:{};
       })(),
@@ -6060,12 +6141,30 @@ const PIL = {
       'Prochaine action':P.text(item.prochaine_action||''),
       'Date prochaine action':P.date(item.date_prochaine_action||null),
     };
-    if(col==='factures')return {
-      'Intitulé':P.title(item.nom||''),
-      'Montant HT €':P.number(parseFloat(item.montant)||0),
-      'Statut':P.select(item.statut||''),
-      'Date émission':P.date(item.date||null),
-    };
+    if(col==='factures'){
+      const facProps={
+        'Intitulé':P.title(item.nom||''),
+        'Montant HT €':P.number(parseFloat(item.montant)||0),
+        'Statut':P.select(item.statut||'Brouillon'),
+        'Date émission':P.date(item.date||null),
+        'Date échéance':P.date(item.date_echeance||null),
+      };
+      if(item.numero) facProps['Numéro']=P.text(item.numero);
+      if(item.notes)  facProps['Notes']=P.text(item.notes);
+      // Resolver Societe : ID local -> notionPageId
+      const _fSocIds=[].concat(item.societe||[]).map(id=>{
+        const c=Object.values(STORE.clients).find(c=>c.notionPageId===id||c.id===id);
+        return c?c.notionPageId:null;
+      }).filter(Boolean);
+      if(_fSocIds.length) facProps['Société']=P.relation(_fSocIds);
+      // Resolver Dossiers CI : ID local -> notionPageId
+      const _fDosIds=[].concat(item.rel_dossiers||[]).map(id=>{
+        const d=STORE.dossiers[id]||Object.values(STORE.dossiers).find(d2=>d2.notionPageId===id);
+        return d?d.notionPageId||null:null;
+      }).filter(Boolean);
+      if(_fDosIds.length) facProps['Dossier CI']=P.relation(_fDosIds);
+      return facProps;
+    }
     return {};
   },
 
@@ -6127,11 +6226,20 @@ const PIL = {
     this._openFactureModal(item,idx,(updated)=>{
       const items=STORE.notion.factures||[];
       if(items[idx])Object.assign(items[idx],updated);
-      if(items[idx]?.id&&STORE.token&&notionAPI.proxyUrl){
-        notionAPI.updatePage(items[idx].id,this._toProps('factures',items[idx])).then(r=>{
-          if(r)toast('✓ Syncé dans Notion','ok');
-          else toast('⚠ Erreur sync Notion','warn');
-        }).catch(()=>{});
+      const _fid=items[idx]?.id;
+      if(_fid&&STORE.token&&notionAPI.proxyUrl&&notionAPI.dbIds.pil_factures){
+        if(String(_fid).startsWith('local-')){
+          // Pas encore dans Notion -> creer
+          notionAPI.createPage(notionAPI.dbIds.pil_factures,this._toProps('factures',items[idx])).then(p=>{
+            if(p){items[idx].id=p.id;items[idx].url=p.url;toast('✓ Créé dans Notion','ok');}
+            else toast('⚠ Erreur sync Notion','warn');
+          }).catch(()=>{});
+        } else {
+          notionAPI.updatePage(_fid,this._toProps('factures',items[idx])).then(r=>{
+            if(r)toast('✓ Syncé dans Notion','ok');
+            else toast('⚠ Erreur sync Notion','warn');
+          }).catch(()=>{});
+        }
       }
       try{localStorage.setItem('pdj_notion_factures',JSON.stringify(STORE.notion.factures));}catch(e){}
       this.render();toast('Facture mise à jour ✓');
@@ -6180,10 +6288,16 @@ const PIL = {
         <div style="padding:20px;display:grid;grid-template-columns:1fr 1fr;gap:14px;">
           <div style="grid-column:1/-1;"><div style="font-size:9px;font-weight:800;text-transform:uppercase;letter-spacing:.12em;color:var(--t40);margin-bottom:5px;">Intitulé *</div>
             <input id="pfm-nom" type="text" value="${esc(item?.nom||'')}" placeholder="Ex: Honoraires CIR 2024…" style="width:100%;background:var(--t08);border:1px solid var(--border2);border-radius:var(--r-sm);padding:8px 12px;font-family:var(--font);font-size:13px;color:#fff;outline:none;box-sizing:border-box;"></div>
-          <div style="grid-column:1/-1;"><div style="font-size:9px;font-weight:800;text-transform:uppercase;letter-spacing:.12em;color:var(--t40);margin-bottom:5px;">Société</div>
-            <input id="pfm-soc" type="text" value="${esc(curSocName)}" placeholder="Rechercher ou créer…" autocomplete="off"
+          <div style="grid-column:1/-1;">
+            <div style="display:flex;align-items:center;justify-content:space-between;margin-bottom:5px;">
+              <div style="font-size:9px;font-weight:800;text-transform:uppercase;letter-spacing:.12em;color:var(--t40);">Société</div>
+              <button style="font-size:9px;font-weight:700;padding:2px 8px;border-radius:5px;border:1px solid rgba(0,255,156,.3);background:rgba(0,255,156,.08);color:var(--green);cursor:pointer;font-family:var(--font);"
+                onmousedown="event.preventDefault();pfmCreateSociete()">+ Créer</button>
+            </div>
+            <input id="pfm-soc" type="text" value="${esc(curSocName)}" placeholder="Rechercher une société…" autocomplete="off"
               style="width:100%;background:var(--t08);border:1px solid rgba(0,255,156,.2);border-radius:var(--r-sm);padding:8px 12px;font-family:var(--font);font-size:13px;color:#fff;outline:none;box-sizing:border-box;"
-              oninput="SS.openSoc('pfm-soc')" onfocus="SS.openSoc('pfm-soc')" onkeydown="SS._key('pfm-soc',event)"></div>
+              oninput="SS.openSoc('pfm-soc')" onfocus="SS.openSoc('pfm-soc')" onkeydown="SS._key('pfm-soc',event)">
+          </div>
           <div style="grid-column:1/-1;"><div style="font-size:9px;font-weight:800;text-transform:uppercase;letter-spacing:.12em;color:var(--t40);margin-bottom:5px;">Dossiers CI liés</div>
             <div id="pfm-dos-tags" style="background:var(--t08);border:1px solid rgba(0,255,156,.2);border-radius:var(--r-sm);padding:6px 10px;min-height:36px;display:flex;flex-wrap:wrap;gap:4px;align-items:center;cursor:text;" onclick="document.getElementById('pfm-dos-q')?.focus();pfmOpenDosPicker()">
               ${dosTagsHtml}
