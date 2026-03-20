@@ -887,6 +887,18 @@ tr:hover td{background:rgba(255,255,255,.02);}
     <div class="mpane" id="mp-etat">
       <div class="msec"><div class="mlbl">Collections</div><div id="m-etat-cols"></div></div>
       <div class="msec"><div class="mlbl">Alertes actives</div><div id="m-etat-alerts"></div></div>
+      <div class="msec" style="border-top:1px solid var(--border);padding-top:14px;margin-top:4px;">
+        <div class="mlbl" style="margin-bottom:10px;">Actions</div>
+        <div style="display:grid;grid-template-columns:1fr 1fr;gap:8px;">
+          <button class="btn btn-ghost btn-sm" style="font-size:11px;border-color:rgba(255,165,0,.3);color:var(--gold);" onclick="mViderDonnees()">
+            🗑 Vider les données
+          </button>
+          <button class="btn btn-ghost btn-sm" style="font-size:11px;border-color:rgba(249,21,117,.3);color:var(--pink);" onclick="mViderTout()">
+            ⚠ Tout vider + tokens
+          </button>
+        </div>
+        <div id="m-etat-s" style="margin-top:8px;font-size:10.5px;color:var(--t60);"></div>
+      </div>
     </div>
   </div>
 </div>
@@ -6904,6 +6916,64 @@ function mClear(){
   if(!confirm('Effacer toutes les données locales ?'))return;
   ['pdj_clients','pdj_dossiers','pdj_token','pdj_cockpit','pdj_notion_dbids','pdj_notion_proxy'].forEach(k=>localStorage.removeItem(k));
   toast('Données effacées','warn');mSt('m-save-s','Données locales effacées.','warn');
+}
+// Boite de confirmation custom (confirm() bloque dans iframe/sandbox)
+function _confirmBox(msg, onOk, btnLabel, btnCls){
+  document.getElementById('_cbox')?.remove();
+  const box=document.createElement('div');
+  box.id='_cbox';
+  box.style.cssText='position:fixed;inset:0;z-index:999999;display:flex;align-items:center;justify-content:center;background:rgba(0,0,0,.6);backdrop-filter:blur(4px);';
+  box.innerHTML=`<div style="background:#0b0e3a;border:1px solid rgba(24,0,255,.4);border-radius:14px;padding:28px 32px;max-width:380px;width:90%;box-shadow:0 24px 64px rgba(0,0,0,.8);">
+    <div style="font-size:14px;font-weight:700;color:#fff;margin-bottom:14px;line-height:1.5;">${msg.replace(/\n/g,'<br>')}</div>
+    <div style="display:flex;gap:10px;justify-content:flex-end;">
+      <button onclick="document.getElementById('_cbox').remove()" style="padding:7px 18px;border-radius:8px;border:1px solid rgba(255,255,255,.2);background:transparent;color:rgba(255,255,255,.6);font-family:var(--font);font-size:12px;cursor:pointer;">Annuler</button>
+      <button id="_cbox_ok" style="padding:7px 18px;border-radius:8px;border:none;background:${btnCls||'var(--pink)'};color:#fff;font-family:var(--font);font-size:12px;font-weight:700;cursor:pointer;">${btnLabel||'Confirmer'}</button>
+    </div>
+  </div>`;
+  document.body.appendChild(box);
+  document.getElementById('_cbox_ok').onclick=()=>{box.remove();onOk();};
+  box.addEventListener('pointerdown',e=>{if(e.target===box)box.remove();});
+}
+
+function mViderDonnees(){
+  const _keys=['pdj_clients','pdj_dossiers','pdj_cockpit',
+    'pdj_notion_livrables','pdj_notion_reunions','pdj_notion_ci',
+    'pdj_notion_factures','pdj_row_pids','pdj_current_lead'];
+  const _nb=_keys.filter(k=>localStorage.getItem(k)!==null).length;
+  if(!_nb){document.getElementById('m-etat-s').textContent='Aucune donnée à vider.';return;}
+  _confirmBox(
+    'Vider les données :\nclients · dossiers · livrables · réunions\n\nLes tokens et la config Notion sont conservés.',
+    ()=>{
+      _keys.forEach(k=>localStorage.removeItem(k));
+      STORE.clients={};STORE.dossiers={};
+      STORE.notion={livrables:[],reunions:[],ci:[],factures:[],societes:[]};
+      STORE.currentLead='';localStorage.setItem('pdj_current_lead','');
+      mRefreshEtat();
+      document.getElementById('m-etat-s').innerHTML='<span style="color:var(--green)">✓ Données vidées ('+_nb+' clés).</span>';
+      toast('Données vidées ✓','ok');
+      if(_curPanel==='overview')renderOverview();
+      if(_curPanel==='ci'){renderCISidebar();renderCIContent();}
+      if(_curPanel==='cockpit')renderCockpit();
+      if(_curPanel==='pilotage')PIL.render();
+      if(typeof _updateLeadBadge==='function')_updateLeadBadge('');
+    },
+    '🗑 Vider les données','var(--gold)'
+  );
+}
+function mViderTout(){
+  _confirmBox(
+    '⚠ TOUT VIDER\nClients · dossiers · token Notion · proxy · IDs\n\nL\'application sera rechargée. Tout est à reconfigurer.',
+    ()=>{
+      const _k2=['pdj_clients','pdj_dossiers','pdj_cockpit',
+        'pdj_token','pdj2026_token','pdj_notion_dbids','pdj_notion_proxy',
+        'pdj_notion_transport','pdj_notion_livrables','pdj_notion_reunions',
+        'pdj_notion_ci','pdj_notion_factures','pdj_row_pids','pdj_current_lead'];
+      _k2.forEach(k=>localStorage.removeItem(k));
+      toast('Tout vidé — rechargement…','warn');
+      setTimeout(()=>location.reload(),800);
+    },
+    '⚠ Tout vider','var(--pink)'
+  );
 }
 function mRefreshEtat(){
   const el=document.getElementById('m-etat-cols');if(!el)return;
