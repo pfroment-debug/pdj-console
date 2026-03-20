@@ -1069,6 +1069,7 @@ const notionAPI = {
     email:      (v) => ({ email: v && v.includes('@') ? v : null }),
     multiSelect:(arr) => ({ multi_select: [].concat(arr||[]).filter(Boolean).map(v=>({name:String(v)})) }),
     phone:      (v) => ({ phone_number: v||null }),
+    url:        (v) => ({ url: v||null }),
   },
 
   clientProps(c) {
@@ -1286,6 +1287,7 @@ const notionAPI = {
       societe:     this._extractProp(p, 'Société') || [],
       notes:       this._extractProp(p, 'Notes') || '',
       rel_dossiers: this._extractProp(p, 'Dossier CI') || [],
+      lien_drive:   this._extractProp(p, 'Lien Drive') || '',
     }));
 
     await loadCol('pil_reunions', 'reunions', p => ({
@@ -1300,6 +1302,7 @@ const notionAPI = {
       societe:      this._extractProp(p, 'Société') || [],
       rel_livrables: this._extractProp(p, 'Livrables liés') || [],
       rel_dossiers:  this._extractProp(p, 'Dossier CI') || [],
+      lien_drive_cr: this._extractProp(p, 'Lien Drive CR') || '',
     }));
 
     await loadCol('pil_societes', 'societes', p => ({
@@ -1322,6 +1325,7 @@ const notionAPI = {
       notes:         this._extractProp(p, 'Notes') || '',
       societe:       this._extractProp(p, 'Société') || [],
       rel_dossiers:  this._extractProp(p, 'Dossier CI') || [],
+      lien_drive:    this._extractProp(p, 'Lien Drive') || '',
     }));
 
     // Peupler le STORE
@@ -1343,6 +1347,7 @@ const notionAPI = {
     if (prop.type === 'select') return prop.select?.name || '';
     if (prop.type === 'date') return prop.date?.start || '';
     if (prop.type === 'email') return prop.email || '';
+    if (prop.type === 'url')   return prop.url || '';
     if (prop.type === 'relation') return prop.relation?.map(r=>r.id) || [];
     if (prop.type === 'formula') return prop.formula?.number ?? prop.formula?.string ?? null;
     return null;
@@ -2422,24 +2427,38 @@ function ciUpdateRow(did,field,idx,key,raw){
 
 // ─── CALC PANEL ────────────────────────────────────────────
 function renderPilRelations(d){
-  // Livrables et réunions qui ont ce dossier dans leurs relations
-  const livs=(STORE.notion.livrables||[]).filter(l=>(l.rel_dossiers||[]).includes(d.id));
-  const reus=(STORE.notion.reunions||[]).filter(r=>(r.rel_dossiers||[]).includes(d.id));
+  const _hasLink=(item)=>[].concat(item.rel_dossiers||[]).some(id=>id===d.id||(d.notionPageId&&id===d.notionPageId));
+  const livs=(STORE.notion.livrables||[]).filter(_hasLink);
+  const reus=(STORE.notion.reunions||[]).filter(_hasLink);
   if(!livs.length&&!reus.length)return '';
   return `<div style="margin-top:14px;padding-top:14px;border-top:1px solid var(--border);">
     <div style="font-size:9px;font-weight:800;text-transform:uppercase;letter-spacing:.12em;color:var(--t40);margin-bottom:10px;">🔗 Pilotage lié</div>
     ${livs.length?`<div style="margin-bottom:8px;">
       <div style="font-size:10px;font-weight:700;color:#8899FF;margin-bottom:5px;">📦 Livrables (${livs.length})</div>
-      ${livs.map(l=>`<div style="font-size:11.5px;padding:4px 6px;border-radius:4px;border:1px solid var(--border);margin-bottom:3px;display:flex;align-items:center;justify-content:space-between;">
-        <span style="overflow:hidden;text-overflow:ellipsis;white-space:nowrap;flex:1;">${esc(l.nom||'—')}</span>
-        ${l.statut?`<span style="font-size:9px;color:var(--t40);margin-left:6px;">${esc(l.statut)}</span>`:''}
+      ${livs.map(l=>`<div style="padding:5px 7px;border-radius:4px;border:1px solid var(--border);margin-bottom:4px;">
+        <div style="display:flex;align-items:center;justify-content:space-between;margin-bottom:3px;">
+          <span style="font-size:11.5px;font-weight:600;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;flex:1;">${esc(l.nom||'\u2014')}</span>
+          ${l.statut?`<span class="chip chip-${l.statut==='Termin\u00e9'?'ok':l.statut==='En cours'?'gold':'muted'}" style="font-size:8px;flex-shrink:0;">${esc(l.statut)}</span>`:''}
+        </div>
+        <div style="display:flex;gap:5px;flex-wrap:wrap;align-items:center;">
+          ${l.deadline?`<span style="font-size:9px;color:var(--t40);">\uD83D\uDCC5 ${new Date(l.deadline+' ').toLocaleDateString('fr-FR',{day:'2-digit',month:'short'})}</span>`:''}
+          ${l.lead?`<span style="font-size:9px;color:var(--t40);">\uD83D\uDC64 ${esc(l.lead)}</span>`:''}
+          ${l.lien_drive?`<a href="${esc(l.lien_drive)}" target="_blank" onclick="event.stopPropagation()" style="font-size:9px;color:var(--green);background:rgba(0,255,156,.12);padding:1px 6px;border-radius:3px;text-decoration:none;">\uD83D\uDCC1 Drive</a>`:''}
+        </div>
       </div>`).join('')}
     </div>`:''}
     ${reus.length?`<div>
       <div style="font-size:10px;font-weight:700;color:var(--pink);margin-bottom:5px;">📅 Réunions (${reus.length})</div>
-      ${reus.map(r=>`<div style="font-size:11.5px;padding:4px 6px;border-radius:4px;border:1px solid var(--border);margin-bottom:3px;display:flex;align-items:center;justify-content:space-between;">
-        <span style="overflow:hidden;text-overflow:ellipsis;white-space:nowrap;flex:1;">${esc(r.nom||'—')}</span>
-        ${r.date?`<span style="font-size:9px;color:var(--t40);margin-left:6px;">${new Date(r.date).toLocaleDateString('fr-FR',{day:'2-digit',month:'2-digit'})}</span>`:''}
+      ${reus.map(r=>`<div style="padding:5px 7px;border-radius:4px;border:1px solid var(--border);margin-bottom:4px;">
+        <div style="display:flex;align-items:center;justify-content:space-between;margin-bottom:3px;">
+          <span style="font-size:11.5px;font-weight:600;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;flex:1;">${esc(r.nom||'\u2014')}</span>
+          ${r.statut?`<span class="chip chip-${r.statut==='R\u00e9alis\u00e9e'?'ok':r.statut==='Planifi\u00e9e'?'blue':'muted'}" style="font-size:8px;flex-shrink:0;">${esc(r.statut)}</span>`:''}
+        </div>
+        <div style="display:flex;gap:5px;flex-wrap:wrap;align-items:center;">
+          ${r.date?`<span style="font-size:9px;color:var(--t40);">\uD83D\uDCC5 ${new Date(r.date+' ').toLocaleDateString('fr-FR',{day:'2-digit',month:'short'})}</span>`:''}
+          ${r.lead?`<span style="font-size:9px;color:var(--t40);">\uD83D\uDC64 ${esc(r.lead)}</span>`:''}
+          ${r.lien_drive_cr?`<a href="${esc(r.lien_drive_cr)}" target="_blank" onclick="event.stopPropagation()" style="font-size:9px;color:var(--green);background:rgba(0,255,156,.12);padding:1px 6px;border-radius:3px;text-decoration:none;">\uD83D\uDCC4 CR Drive</a>`:''}
+        </div>
       </div>`).join('')}
     </div>`:''}
   </div>`;
@@ -4449,27 +4468,19 @@ function ciNewDossierConfirm(clientId){
   if(did&&lead2&&STORE.dossiers[did]){
     STORE.dossiers[did].lead=lead2;STORE._saveLocal();
   }
-  ciNav('dossier',clientId,did);
   const _clientName=STORE.clients[clientId]?.name||clientId;
   toast(_clientName+' — '+disp+' '+annee+' créé ✓');
-  // Sync vers Notion
-  if(STORE.token&&notionAPI.proxyUrl){
-    const _client=STORE.clients[clientId];
-    const _dos=STORE.dossiers[did];
-    const _syncDos=async()=>{
-      // 1. S'assurer que le client a un notionPageId
+  // Sync client AVANT addDossier pour que syncIndicator->syncDossier ait le notionPageId
+  (async()=>{
+    if(STORE.token&&notionAPI.proxyUrl){
+      const _client=STORE.clients[clientId];
       if(_client&&!_client.notionPageId&&notionAPI.dbIds.societes){
-        const cp=await notionAPI.syncClient(_client);
-        if(!cp) return;
+        await notionAPI.syncClient(_client).catch(()=>{});
       }
-      // 2. Sync le dossier
-      if(_dos&&notionAPI.dbIds.dossiers){
-        const dp=await notionAPI.syncDossier(_dos);
-        if(dp) toast('✓ Dossier syncé dans Notion','ok');
-      }
-    };
-    _syncDos().catch(()=>{});
-  }
+    }
+    // addDossier declenche syncIndicator.run->syncDossier (une seule fois)
+    ciNav('dossier',clientId,did);
+  })();
 }
 function dosEditLead(did){
   const d=STORE.dossiers[did];if(!d)return;
@@ -5630,6 +5641,7 @@ const PIL = {
     {key:'priorite',label:'Priorité',type:'select',opts:['Haute','Moyenne','Basse'],w:'100px'},
     {key:'deadline',label:'Deadline',type:'date',w:'130px'},
     {key:'lead',label:'Lead',type:'select',opts:['Paul','Guillaume','Axel','Lucile'],w:'120px'},
+    {key:'lien_drive',label:'Lien Drive',type:'url',w:'220px'},
     {key:'notes',label:'Notes',type:'text',w:'200px'},
     {key:'rel_dossiers',label:'Dossiers CI liés',type:'relations',w:'220px',createIn:'dossiers',
       getItems:()=>Object.values(STORE.dossiers).map(d=>{
@@ -5646,6 +5658,7 @@ const PIL = {
     {key:'statut',label:'Statut',type:'select',opts:['Planifiée','Réalisée','À valider','Annulée'],w:'120px'},
     {key:'priorite',label:'Priorité',type:'select',opts:['Haute','Moyenne','Basse'],w:'100px'},
     {key:'lead',label:'Lead',type:'select',opts:['Paul','Guillaume','Axel','Lucile'],w:'120px'},
+    {key:'lien_drive_cr',label:'Lien Drive CR',type:'url',w:'220px'},
     {key:'rel_livrables',label:'Livrables liés',type:'relations',w:'220px',createIn:'livrables',
       getItems:()=>(STORE.notion.livrables||[]).map(l=>({id:l.id||l.nom,label:l.nom||'?'}))},
     {key:'rel_dossiers',label:'Dossiers CI liés',type:'relations',w:'220px',createIn:'dossiers',
@@ -5669,6 +5682,7 @@ const PIL = {
     {key:'montant',label:'Montant €',type:'number',w:'100px'},
     {key:'statut',label:'Statut',type:'select',opts:['Brouillon','Envoyée','Payée','En retard'],w:'120px'},
     {key:'date',label:'Date',type:'date',w:'130px'},
+    {key:'lien_drive',label:'Lien Drive',type:'url',w:'220px'},
   ],
 
   _rf(f,val,prefix){
@@ -5724,6 +5738,14 @@ const PIL = {
         </div>
         <input type="hidden" id="${hiddenId}" value="${esc(JSON.stringify(curIds))}">
       </div>`;
+    }
+    if(f.type==='url'){
+      const _uv=val||'';
+      return '<div style="position:relative;display:inline-block;width:'+f.w+';box-sizing:border-box;">'
+        +'<input id="'+prefix+'-'+f.key+'" type="url" value="'+esc(_uv)+'"'
+        +' placeholder="https://drive.google.com/..."'
+        +' style="width:100%;background:var(--t08);border:1px solid rgba(0,255,156,.2);border-radius:4px;padding:4px 28px 4px 7px;font-family:var(--font);font-size:11.5px;color:#fff;outline:none;box-sizing:border-box;">'
+        +(_uv?'<a href="'+esc(_uv)+'" target="_blank" style="position:absolute;right:5px;top:50%;transform:translateY(-50%);font-size:12px;text-decoration:none;opacity:.7;" title="Ouvrir">\u2197</a>':'')+'</div>';
     }
     if(f.type==='select')return `<select id="${prefix}-${f.key}" style="background:var(--t08,rgba(255,255,255,.08));border:1px solid rgba(0,255,156,.2);border-radius:4px;padding:4px 7px;font-family:var(--font,inherit);font-size:11.5px;color:#fff;outline:none;width:${f.w};">${f.opts.map(o=>`<option value="${esc(o)}" ${v===o?'selected':''}>${esc(o)}</option>`).join('')}</select>`;
     if(f.type==='date')return CalPicker.create(prefix+'-'+f.key+'_date',v,{w:f.w||'130px'});
@@ -5834,6 +5856,12 @@ const PIL = {
       if(pk&&hidden){const ids=[...pk.querySelectorAll('input[type=checkbox]:checked')].map(c=>c.dataset.relId).filter(Boolean);if(ids.length)hidden.value=JSON.stringify(ids);}
     });
     const updated=this._readForm('pil-ed',fields);
+    if(col==='livrables'&&updated.statut==='Terminé'&&!updated.lien_drive){
+      toast('⚠ Lien Drive requis pour marquer comme Terminé','warn');return;
+    }
+    if(col==='reunions'&&updated.statut==='Réalisée'&&!updated.lien_drive_cr){
+      toast('⚠ Lien Drive CR requis pour marquer comme Réalisée','warn');return;
+    }
     const items=STORE.notion[col]||[];
     if(items[idx]){Object.assign(items[idx],updated);STORE.notion[col]=[...items];}
     if(items[idx]?.id&&!String(items[idx].id).startsWith('local-')&&STORE.token&&notionAPI.proxyUrl){
@@ -5868,6 +5896,12 @@ const PIL = {
     });
     const obj=this._readForm('pil-new',fields);
     if(!obj[fields[0]?.key]?.toString().trim()){toast('Titre requis','warn');return;}
+    if(col==='livrables'&&obj.statut==='Terminé'&&!obj.lien_drive){
+      toast('⚠ Lien Drive requis pour marquer comme Terminé','warn');return;
+    }
+    if(col==='reunions'&&obj.statut==='Réalisée'&&!obj.lien_drive_cr){
+      toast('⚠ Lien Drive CR requis pour marquer comme Réalisée','warn');return;
+    }
     obj.id='local-'+Date.now();obj.nom=obj[fields[0].key]||'';
     // Si un filtre Lead est actif, l'appliquer automatiquement
     if(this.state.filterLead&&!obj.lead) obj.lead=this.state.filterLead;
@@ -6114,6 +6148,7 @@ const PIL = {
         return dids.length?{'Dossier CI':P.relation(dids)}:{};
       })(),
       ...(item.notes?{'Notes':P.text(item.notes)}:{}),
+      ...(item.lien_drive?{'Lien Drive':P.url(item.lien_drive)}:{}),
     };
     if(col==='reunions')return {
       'Titre':P.title(item.nom||''),
@@ -6144,6 +6179,7 @@ const PIL = {
         }).filter(Boolean);
         return lids.length?{'Livrables liés':P.relation(lids)}:{};
       })(),
+      ...(item.lien_drive_cr?{'Lien Drive CR':P.url(item.lien_drive_cr)}:{}),
     };
     if(col==='societes')return {
       'Nom':P.title(item.nom||item.name||''),
@@ -6177,6 +6213,7 @@ const PIL = {
         return d?d.notionPageId||null:null;
       }).filter(Boolean);
       if(_fDosIds.length) facProps['Dossier CI']=P.relation(_fDosIds);
+      if(item.lien_drive) facProps['Lien Drive']=P.url(item.lien_drive);
       return facProps;
     }
     return {};
@@ -6340,6 +6377,9 @@ const PIL = {
             <input id="pfm-date-ech" type="date" value="${item?.date_echeance||''}" style="width:100%;background:var(--t08);border:1px solid var(--border2);border-radius:var(--r-sm);padding:7px 12px;font-family:var(--font);font-size:12.5px;color:#fff;outline:none;"></div>
           <div><div style="font-size:9px;font-weight:800;text-transform:uppercase;letter-spacing:.12em;color:var(--t40);margin-bottom:5px;">Numéro</div>
             <input id="pfm-numero" type="text" value="${esc(item?.numero||'')}" placeholder="PDJ-2024-001…" style="width:100%;background:var(--t08);border:1px solid var(--border2);border-radius:var(--r-sm);padding:8px 12px;font-family:var(--font);font-size:12.5px;color:#fff;outline:none;"></div>
+          <div style="grid-column:1/-1;"><div style="font-size:9px;font-weight:800;text-transform:uppercase;letter-spacing:.12em;color:var(--t40);margin-bottom:5px;">Lien Drive 📁 <span style="font-size:8px;color:rgba(255,255,255,.3);">facture envoyée au client</span></div>
+            <input id="pfm-lien-drive" type="url" value="${esc(item?.lien_drive||'')}" placeholder="https://drive.google.com/file/..."
+              style="width:100%;background:var(--t08);border:1px solid rgba(0,255,156,.2);border-radius:var(--r-sm);padding:8px 12px;font-family:var(--font);font-size:12.5px;color:#fff;outline:none;box-sizing:border-box;"></div>
           <div style="grid-column:1/-1;"><div style="font-size:9px;font-weight:800;text-transform:uppercase;letter-spacing:.12em;color:var(--t40);margin-bottom:5px;">Notes</div>
             <textarea id="pfm-notes" rows="2" placeholder="Notes libres…" style="width:100%;background:var(--t08);border:1px solid var(--border2);border-radius:var(--r-sm);padding:8px 12px;font-family:var(--font);font-size:12.5px;color:#fff;outline:none;resize:vertical;box-sizing:border-box;">${esc(item?.notes||'')}</textarea></div>
           <div style="grid-column:1/-1;">
@@ -6385,6 +6425,7 @@ const PIL = {
       date_echeance:document.getElementById('pfm-date-ech')?.value||'',
       numero:document.getElementById('pfm-numero')?.value||'',
       notes:document.getElementById('pfm-notes')?.value||'',
+      lien_drive:document.getElementById('pfm-lien-drive')?.value||'',
     };
     document.getElementById('pil-fac-modal')?.remove();
     const cb=this._facModalCallback;
@@ -6570,27 +6611,25 @@ const PIL = {
     if(!clientId||clientId===''){if(errEl){errEl.textContent='Sélectionnez ou créez un client.';errEl.style.display='block';}return;}
     if(!annee||annee<2015||annee>2030){if(errEl){errEl.textContent='Année invalide.';errEl.style.display='block';}return;}
     document.getElementById('pil-create-modal')?.remove();
-    const did=STORE.addDossier(clientId,disp,annee,exercice);
-    if(did&&priorite!=='Moyenne')STORE.updateDossier(did,'priorite',priorite);
-    const newDossier=STORE.dossiers[did];
     toast((STORE.clients[clientId]?.name||clientId)+' — '+disp+' '+annee+' créé ✓');
-    // Sync vers Notion
-    if(STORE.token&&notionAPI.proxyUrl){
-      const _c2=STORE.clients[clientId];
-      const _d2=STORE.dossiers[did];
-      (async()=>{
-        if(_c2&&!_c2.notionPageId&&notionAPI.dbIds.societes)
-          await notionAPI.syncClient(_c2);
-        if(_d2&&notionAPI.dbIds.dossiers){
-          const r=await notionAPI.syncDossier(_d2);
-          if(r) toast('✓ Dossier syncé dans Notion','ok');
+    // Sync client AVANT addDossier pour que syncIndicator->syncDossier ait le notionPageId client
+    const _doCreate=async()=>{
+      if(STORE.token&&notionAPI.proxyUrl){
+        const _c2=STORE.clients[clientId];
+        if(_c2&&!_c2.notionPageId&&notionAPI.dbIds.societes){
+          await notionAPI.syncClient(_c2).catch(()=>{});
         }
-      })().catch(()=>{});
-    }
-    this.render();
-    const cb=this._createModalCallback;
-    this._createModalCallback=null;
-    if(cb&&newDossier)cb(newDossier);
+      }
+      // addDossier declenche syncIndicator.run->syncDossier (une seule fois)
+      const did=STORE.addDossier(clientId,disp,annee,exercice);
+      if(did&&priorite!=='Moyenne')STORE.updateDossier(did,'priorite',priorite);
+      const newDossier=STORE.dossiers[did];
+      this.render();
+      const cb=this._createModalCallback;
+      this._createModalCallback=null;
+      if(cb&&newDossier)cb(newDossier);
+    };
+    _doCreate();
   },
 
   toggleDetail(col,idx){
@@ -6667,6 +6706,8 @@ const PIL = {
       {l:'Probabilité',v:item.probabilite!=null?item.probabilite+'%':''},
       {l:'Montant',v:item.montant?EUR(item.montant):''},
       {l:'Notes',v:item.notes||item.compte_rendu||''},
+      ...(item.lien_drive?[{l:'Drive 📁',v:item.lien_drive,_url:true}]:[]),
+      ...(item.lien_drive_cr?[{l:'CR Drive 📄',v:item.lien_drive_cr,_url:true}]:[]),
     ].filter(f=>f.v&&f.v!=='—');
 
     // Bloc deadline hero
@@ -6699,7 +6740,7 @@ const PIL = {
           <div style="font-size:9px;font-weight:800;text-transform:uppercase;letter-spacing:.15em;color:var(--t40);margin-bottom:8px;">Détails</div>
           ${allFields.map(f=>`<div style="display:flex;gap:8px;padding:4px 0;border-bottom:1px solid rgba(255,255,255,.05);font-size:11.5px;">
             <span style="color:var(--t40);min-width:80px;flex-shrink:0;">${f.l}</span>
-            <span style="color:#fff;">${esc(f.v)}</span>
+            ${f._url?`<a href="${esc(f.v)}" target="_blank" style="color:var(--green);font-size:11px;text-decoration:none;">${'\u2197 '+esc(f.v.replace('https://','').slice(0,35))}</a>`:`<span style="color:#fff;">${esc(f.v)}</span>`}
           </div>`).join('')}
         </div>
         <div>
