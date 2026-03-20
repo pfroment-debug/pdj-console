@@ -2289,6 +2289,7 @@ function renderDossierView(container){
       <div class="dos-title-bar">
         <div class="dos-title">${d.dispositif} ${d.annee}</div>
         <span class="chip ${d.validation?'chip-ok':'chip-gold'}">${d.validation?'Validé':'En cours'}</span>
+        ${d.notionPageId?`<a href="https://www.notion.so/${d.notionPageId.replace(/-/g,'')}" target="_blank" class="chip" style="background:rgba(24,0,255,.15);color:#8899FF;font-size:8.5px;text-decoration:none;" title="Ouvrir dans Notion">↗ Notion</a>`:''}
         ${d.lead?`<span class='chip' style='background:${{Paul:'rgba(55,138,221,.2)',Guillaume:'rgba(83,74,183,.2)',Axel:'rgba(0,255,156,.12)',Lucile:'rgba(249,21,117,.15)'}[d.lead]||'var(--t08)'};color:${{Paul:'#378ADD',Guillaume:'#8877EE',Axel:'var(--green)',Lucile:'var(--pink)'}[d.lead]||'var(--t60)'};cursor:pointer;' onclick='dosEditLead("${esc(d.id)}")'>👤 ${esc(d.lead)}</span>`:`<button class='btn btn-ghost btn-sm' style='font-size:9px;padding:2px 8px;' onclick='dosEditLead("${esc(d.id)}")'>+ Lead</button>`}
         <select style="background:transparent;border:1px solid ${(d.priorite||'Moyenne')==='Haute'?'rgba(249,21,117,.4)':(d.priorite||'Moyenne')==='Basse'?'rgba(255,255,255,.12)':'rgba(255,215,0,.3)'};color:${(d.priorite||'Moyenne')==='Haute'?'var(--pink)':(d.priorite||'Moyenne')==='Basse'?'var(--t40)':'var(--gold)'};border-radius:99px;padding:2px 10px;font-family:var(--font);font-size:9.5px;font-weight:800;outline:none;cursor:pointer;text-transform:uppercase;letter-spacing:.05em;"
           onchange="STORE.updateDossier('${esc(d.id)}','priorite',this.value);tabRefresh()">
@@ -2313,6 +2314,10 @@ function renderDossierView(container){
         <div style="margin-left:auto;display:flex;gap:8px;">
           <button class="btn btn-${d.validation?'ghost':'green'} btn-sm" onclick="STORE.updateDossier('${esc(d.id)}','validation',${!d.validation});renderDossierView(document.getElementById('ci-content'));">
             ${d.validation?'↩ En cours':'✓ Valider'}
+          </button>
+          <button class="btn btn-blue btn-sm" style="font-size:10px;"
+            onclick="ciSyncDossier('${esc(d.id)}')" title="Forcer la synchronisation de ce dossier vers Notion">
+            ⇄ Sync Notion
           </button>
           <button class="btn btn-danger btn-sm" onclick="if(confirm('Supprimer ce dossier ?')){STORE.removeDossier('${esc(d.id)}');ciNav('client','${esc(d.clientId)}');}">🗑</button>
         </div>
@@ -4459,6 +4464,16 @@ function dosSaveLead(did,lead){
   document.getElementById('dos-lead-popup')?.remove();
   tabRefresh();
   if(lead) toast('👤 Lead : '+lead+' ✓');
+  // Sync vers Notion
+  if(STORE.token&&notionAPI.proxyUrl&&d.notionPageId){
+    const clientNotionId=STORE.clients[d.clientId]?.notionPageId||null;
+    notionAPI.updatePage(d.notionPageId,notionAPI.dossierProps(d,clientNotionId))
+      .then(r=>{ if(r) toast('✓ Lead syncé dans Notion','ok'); })
+      .catch(()=>{});
+  } else if(STORE.token&&notionAPI.proxyUrl&&!d.notionPageId){
+    // Dossier pas encore dans Notion, le créer
+    notionAPI.syncDossier(d).then(r=>{ if(r) toast('✓ Dossier syncé dans Notion','ok'); }).catch(()=>{});
+  }
 }
 
 function ciDeleteClient(id){
@@ -4520,6 +4535,40 @@ function ciSyncClient(id){
 }
 
 // Pousse client + tous ses dossiers + toutes les lignes vers Notion
+async function ciSyncDossier(did){
+  const d=STORE.dossiers[did];if(!d){toast('⚠ Dossier introuvable','warn');return;}
+  if(!STORE.token){toast('⚠ Token Notion requis — ↺ Données → Étape 1','warn');return;}
+  if(!notionAPI.proxyUrl){toast('⚠ Proxy requis — ↺ Données → Étape 2','warn');return;}
+  const c=STORE.clients[d.clientId];
+  const nom=(c?.name||d.clientId)+' — '+d.dispositif+' '+d.annee;
+  toast('⇄ Sync '+nom+' en cours…');
+  try{
+    // 1. S'assurer que le client a un notionPageId
+    if(c&&!c.notionPageId&&notionAPI.dbIds.societes){
+      const cp=await notionAPI.syncClient(c);
+      if(!cp){toast('⚠ Impossible de créer le client dans Notion','warn');return;}
+    }
+    // 2. Sync le dossier
+    const dp=await notionAPI.syncDossier(d);
+    if(!dp){toast('⚠ Erreur sync dossier — vérifiez la console F12','warn');return;}
+    // 3. Sync toutes les lignes (personnel, affectations, etc.)
+    let ok=1,err=0;
+    for(const field of ['personnel','affectations','amortissements','prestations','subventions']){
+      const rows=d[field]||[];
+      for(let i=0;i<rows.length;i++){
+        const r=await notionAPI.syncRow(did,field,i);
+        if(r)ok++;else err++;
+      }
+    }
+    const msg='✓ '+nom+' syncé — '+(ok)+' élément(s)'+(err?' | ⚠ '+err+' échec(s)':'');
+    toast(msg,err?'warn':'ok');
+    // Re-render pour afficher le badge Notion
+    renderDossierView(document.getElementById('ci-content'));
+  }catch(e){
+    toast('⚠ Erreur: '+e.message,'warn');
+  }
+}
+
 async function ciSyncAll(id){
   const c=STORE.clients[id];if(!c){toast('⚠ Client introuvable: '+id,'warn');return;}
   if(!STORE.token){toast('⚠ Token Notion manquant — ↺ Données → Étape 1','warn');return;}
@@ -6981,4 +7030,3 @@ console.log('PDJ Console SGA v3.1 — Point du Jour Conseil');
 
 </script>
 </body>
-</
