@@ -1070,6 +1070,24 @@ const notionAPI = {
     multiSelect:(arr) => ({ multi_select: [].concat(arr||[]).filter(Boolean).map(v=>({name:String(v)})) }),
     phone:      (v) => ({ phone_number: v||null }),
     url:        (v) => ({ url: v||null }),
+    people:     (ids) => ({ people: [].concat(ids||[]).filter(Boolean).map(id=>({object:'user',id})) }),
+  },
+
+  // Lead <-> Notion User ID
+  _leadToUid(name){
+    const MAP={Paul:'7e764ade-b9b3-4cfe-a5ca-aadc7816660d',Guillaume:'af436357-51d5-4ae4-9052-f77950ec5c98',Axel:'03ee67d9-fca8-4672-a139-4880e4eb406b',Lucile:'294d872b-594c-8191-920a-000216bb2c0c'};
+    return MAP[name]||null;
+  },
+  _uidToLead(uid){
+    const MAP={'7e764ade-b9b3-4cfe-a5ca-aadc7816660d':'Paul','af436357-51d5-4ae4-9052-f77950ec5c98':'Guillaume','03ee67d9-fca8-4672-a139-4880e4eb406b':'Axel','294d872b-594c-8191-920a-000216bb2c0c':'Lucile'};
+    return MAP[uid]||null;
+  },
+  _extractLead(userIds){
+    for(const uid of [].concat(userIds||[])){
+      const name=this._uidToLead(uid);
+      if(name) return name;
+    }
+    return '';
   },
 
   clientProps(c) {
@@ -1115,7 +1133,10 @@ const notionAPI = {
       'Statut':             P.select(d.validation ? 'Valid\u00e9' : 'En cours'),
       'Priorit\u00e9':            P.select(d.priorite||'Moyenne'),
     };
-    if(d.lead) props['Lead']=P.select(d.lead);
+    if(d.lead){
+      const _lUid=this._leadToUid(d.lead);
+      if(_lUid) props['Lead']=P.people([_lUid]);
+    }
     if(alertes.length) props['Alertes r\u00e9glementaires']=P.multiSelect(alertes);
     if(d.note_reglementaire) props['Note r\u00e9glementaire']=P.text(d.note_reglementaire);
     if(clientNotionId) props['Soci\u00e9t\u00e9']=P.relation([clientNotionId]);
@@ -1283,7 +1304,8 @@ const notionAPI = {
       statut:      this._extractProp(p, 'Statut') || '',
       deadline:    this._extractProp(p, 'Deadline') || '',
       priorite:    this._extractProp(p, 'Priorité') || '',
-      lead:        this._extractProp(p, 'Lead') || '',
+      lead:        this._extractLead(this._extractProp(p, 'Lead')||[]),
+      lead_users:  this._extractProp(p, 'Lead') || [],
       societe:     this._extractProp(p, 'Société') || [],
       notes:       this._extractProp(p, 'Notes') || '',
       rel_dossiers: this._extractProp(p, 'Dossier CI') || [],
@@ -1297,7 +1319,8 @@ const notionAPI = {
       date:         this._extractProp(p, 'Date') || '',
       statut:       this._extractProp(p, 'Statut') || '',
       priorite:     this._extractProp(p, 'Priorité') || '',
-      lead:         this._extractProp(p, 'Lead') || '',
+      lead:         this._extractLead(this._extractProp(p, 'Lead')||[]),
+      lead_users:   this._extractProp(p, 'Lead') || [],
       compte_rendu: this._extractProp(p, 'Compte-rendu') || '',
       societe:      this._extractProp(p, 'Société') || [],
       rel_livrables: this._extractProp(p, 'Livrables liés') || [],
@@ -1348,6 +1371,7 @@ const notionAPI = {
     if (prop.type === 'date') return prop.date?.start || '';
     if (prop.type === 'email') return prop.email || '';
     if (prop.type === 'url')   return prop.url || '';
+    if (prop.type === 'people') return prop.people?.map(u=>u.id) || [];
     if (prop.type === 'relation') return prop.relation?.map(r=>r.id) || [];
     if (prop.type === 'formula') return prop.formula?.number ?? prop.formula?.string ?? null;
     return null;
@@ -1406,7 +1430,7 @@ const notionAPI = {
           exercice:   this._extractProp(p, 'Exercice d\u00e9p\u00f4t') || 2025,
           validation: this._extractProp(p, 'Validation') || false,
           honoraires: this._extractProp(p, 'Honoraires PDJ €') || 0,
-          lead: this._extractProp(p, 'Lead') || '',
+          lead: this._extractLead(this._extractProp(p, 'Lead')||[]),
           personnel:[], affectations:[], amortissements:[], prestations:[], subventions:[]
         };
         if (clients[clientId]) clients[clientId]._dossierIds.push(did);
@@ -6141,7 +6165,11 @@ const PIL = {
       'Statut':P.select(item.statut||''),
       'Priorité':P.select(item.priorite||''),
       'Deadline':P.date(item.deadline||null),
-      ...(item.lead?{'Lead':P.select(item.lead)}:{}),
+      ...(()=>{
+        if(!item.lead) return {};
+        const _uid=notionAPI._leadToUid(item.lead);
+        return _uid?{'Lead':P.people([_uid])}:{};
+      })(),
       ...(()=>{
         const ids=[].concat(item.societe||[]).map(id=>{
           const c=Object.values(STORE.clients).find(c=>c.notionPageId===id||c.id===id);
@@ -6166,7 +6194,11 @@ const PIL = {
       'Statut':P.select(item.statut||''),
       'Priorité':P.select(item.priorite||''),
       'Compte-rendu':P.text(item.compte_rendu||''),
-      ...(item.lead?{'Lead':P.select(item.lead)}:{}),
+      ...(()=>{
+        if(!item.lead) return {};
+        const _uid=notionAPI._leadToUid(item.lead);
+        return _uid?{'Lead':P.people([_uid])}:{};
+      })(),
       ...(()=>{
         const ids=[].concat(item.societe||[]).map(id=>{
           const c=Object.values(STORE.clients).find(c=>c.notionPageId===id||c.id===id);
@@ -7546,6 +7578,15 @@ if(STORE.token && notionAPI.proxyUrl){
     }
   }, 10*60*1000);
 }
+
+// Table de correspondance Lead <-> Notion User ID
+const _LEAD_USER_IDS={
+  Paul:      '7e764ade-b9b3-4cfe-a5ca-aadc7816660d',
+  Guillaume: 'af436357-51d5-4ae4-9052-f77950ec5c98',
+  Axel:      '03ee67d9-fca8-4672-a139-4880e4eb406b',
+  Lucile:    '294d872b-594c-8191-920a-000216bb2c0c',
+};
+const _USER_ID_LEAD=Object.fromEntries(Object.entries(_LEAD_USER_IDS).map(([k,v])=>[v,k]));
 
 // Selecteur de vue Lead
 const _LEADS=[
