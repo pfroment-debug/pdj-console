@@ -5780,10 +5780,16 @@ const PIL = {
     {key:'lien_drive',label:'Lien Drive',type:'url',w:'220px'},
     {key:'notes',label:'Notes',type:'text',w:'200px'},
     {key:'rel_dossiers',label:'Dossiers CI liés',type:'relations',w:'220px',createIn:'dossiers',
-      getItems:()=>Object.values(STORE.dossiers).map(d=>{
-        const cn=STORE.clients[d.clientId]?.name||d.clientId;
-        return {id:d.id,label:cn+' — '+d.dispositif+' '+d.annee};
-      })},
+      getItems:()=>Object.values(STORE.dossiers)
+        .sort((a,b)=>{
+          const na=(STORE.clients[a.clientId]?.name||a.clientId).toLowerCase();
+          const nb=(STORE.clients[b.clientId]?.name||b.clientId).toLowerCase();
+          return na<nb?-1:na>nb?1:a.annee-b.annee;
+        })
+        .map(d=>{
+          const cn=STORE.clients[d.clientId]?.name||d.clientId;
+          return {id:d.id,label:cn+' — '+d.dispositif+' '+d.annee};
+        })},
     {key:'rel_reunions',label:'Réunions liées',type:'relations',w:'220px',createIn:'reunions',
       getItems:()=>(STORE.notion.reunions||[]).map(r=>({id:r.id||r.nom,label:r.nom||'?'}))},
   ],
