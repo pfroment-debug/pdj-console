@@ -2099,8 +2099,7 @@ function renderCISidebar(){
   const _lead=STORE.currentLead||'';
   const clients=Object.values(STORE.clients).filter(c=>{
     if(!c.name.toLowerCase().includes(q)) return false;
-    if(!_lead) return true;
-    return STORE.clientDossierIds(c.id).some(did=>STORE.dossiers[did]?.lead===_lead);
+    return _clientMatchesLead(c.id, _lead);
   }).sort((a,b)=>a.name.localeCompare(b.name));
   const items=clients.map(c=>{
     const dids=STORE.clientDossierIds(c.id);
@@ -4710,8 +4709,8 @@ function renderOverview(){
   const weekEnd = new Date(today); weekEnd.setDate(today.getDate()+7);
   const clients = Object.values(STORE.clients);
   const _lead=STORE.currentLead||'';
-  const lv=(STORE.notion.livrables||[]).filter(l=>!_lead||l.lead===_lead);
-  const ru=(STORE.notion.reunions||[]).filter(r=>!_lead||r.lead===_lead);
+  const lv=(STORE.notion.livrables||[]).filter(l=>_itemMatchesLead(l,_lead));
+  const ru=(STORE.notion.reunions||[]).filter(r=>_itemMatchesLead(r,_lead));
 
   const classify = (dateStr) => {
     if(!dateStr) return null;
@@ -4959,7 +4958,7 @@ function renderCockpit(){
   // ── SECTION : KPIs + Alertes ─────────────────────────────
   // KPIs filtres par lead
   const _leadClients=_lead?allClients:Object.values(STORE.clients);
-  const _leadDossiers=Object.values(STORE.dossiers).filter(d=>!_lead||d.lead===_lead);
+  const _leadDossiers=Object.values(STORE.dossiers).filter(d=>!_lead||!d.lead||d.lead===_lead);
   const kpiSection=`<div style="display:grid;grid-template-columns:repeat(5,1fr);gap:12px;margin-bottom:18px;">
     ${[
       {k:'ca_cur',   l:'CA En Cours €',  cls:'kv-g', fmt:(v)=>v?EUR(v):'— €'},
@@ -4988,10 +4987,9 @@ function renderCockpit(){
 
   // ── SECTION : Clients actifs (source = STORE.clients = Espace CI) ─────────
   const _lead=STORE.currentLead||'';
-  const allClients = Object.values(STORE.clients).filter(c=>{
-    if(!_lead) return true;
-    return STORE.clientDossierIds(c.id).some(did=>STORE.dossiers[did]?.lead===_lead);
-  }).sort((a,b)=>a.name.localeCompare(b.name));
+  const allClients = Object.values(STORE.clients).filter(c=>
+    _clientMatchesLead(c.id, _lead)
+  ).sort((a,b)=>a.name.localeCompare(b.name));
 
   // Calcul de l'action la plus proche (RDV ou livrable) par client
   const nextAction = (clientId) => {
@@ -5211,8 +5209,8 @@ function renderCockpit(){
 
   // ── LIENS NOTION PILOTAGE ─────────────────────────────────
   const notionStats=(()=>{
-    const _lvAll=_lead?(STORE.notion.livrables||[]).filter(l=>l.lead===_lead):(STORE.notion.livrables||[]);
-    const _ruAll=_lead?(STORE.notion.reunions||[]).filter(r=>r.lead===_lead):(STORE.notion.reunions||[]);
+    const _lvAll=(STORE.notion.livrables||[]).filter(l=>_itemMatchesLead(l,_lead));
+    const _ruAll=(STORE.notion.reunions||[]).filter(r=>_itemMatchesLead(r,_lead));
     const nbLiv=_lvAll.length;
     const nbReu=_ruAll.length;
     const urgent=_lvAll.filter(l=>l.deadline&&new Date(l.deadline)-Date.now()<7*86400000&&l.statut!=='Terminé').length;
@@ -5506,7 +5504,7 @@ const PIL = {
     // Appliquer le filtre Lead si actif
     const _allItems=STORE.notion[col]||[];
     const _lead=this.state.filterLead||'';
-    const items=_lead?_allItems.filter(it=>it.lead===_lead):_allItems;
+    const items=_allItems.filter(it=>_itemMatchesLead(it,_lead));
     const editIdx=this.state.editItem?.collection===col?this.state.editItem.idx:null;
     const isNew=this.state.newItem?.collection===col;
     const fbar=(item,prefix,saveLabel,saveFn,cancelFn)=>`<div style="display:flex;gap:8px;flex-wrap:wrap;align-items:flex-end;padding:10px 12px;background:rgba(0,255,156,.04);border-bottom:1px solid rgba(0,255,156,.1);margin-bottom:6px;">
@@ -5897,16 +5895,16 @@ const PIL = {
 
   _dashboard(){
     const _dl=this.state.filterLead||'';
-    const lv=(_dl?(STORE.notion.livrables||[]).filter(l=>l.lead===_dl):(STORE.notion.livrables||[]));
-    const ru=(_dl?(STORE.notion.reunions||[]).filter(r=>r.lead===_dl):(STORE.notion.reunions||[]));
+    const lv=(STORE.notion.livrables||[]).filter(l=>_itemMatchesLead(l,_dl));
+    const ru=(STORE.notion.reunions||[]).filter(r=>_itemMatchesLead(r,_dl));
     const now=Date.now();
     const urgent=lv.filter(l=>l.deadline&&new Date(l.deadline+' ')-now<7*86400000&&l.statut!=='Terminé');
     return `<div>
       <div class="kpi-row">
         <div class="kpi-card"><div class="kpi-lbl">Livrables</div><div class="kpi-val gold">${lv.length}</div><div class="kpi-sub">${urgent.length} urgents</div></div>
         <div class="kpi-card"><div class="kpi-lbl">Réunions</div><div class="kpi-val">${ru.length}</div></div>
-        <div class="kpi-card"><div class="kpi-lbl">Dossiers CI</div><div class="kpi-val green">${_dl?Object.values(STORE.dossiers).filter(d=>d.lead===_dl).length:Object.keys(STORE.dossiers).length}</div></div>
-        <div class="kpi-card"><div class="kpi-lbl">Clients</div><div class="kpi-val">${_dl?Object.values(STORE.clients).filter(c=>STORE.clientDossierIds(c.id).some(did=>STORE.dossiers[did]?.lead===_dl)).length:Object.keys(STORE.clients).length}</div></div>
+        <div class="kpi-card"><div class="kpi-lbl">Dossiers CI</div><div class="kpi-val green">${_dl?Object.values(STORE.dossiers).filter(d=>!d.lead||d.lead===_dl).length:Object.keys(STORE.dossiers).length}</div></div>
+        <div class="kpi-card"><div class="kpi-lbl">Clients</div><div class="kpi-val">${_dl?Object.values(STORE.clients).filter(c=>_clientMatchesLead(c.id,_dl)).length:Object.keys(STORE.clients).length}</div></div>
       </div>
       ${urgent.length?`<div style="margin-bottom:16px;">
         <div class="pil-section-title">Livrables urgents</div>
@@ -5917,7 +5915,7 @@ const PIL = {
           return `<div class="pil-item"><div class="pil-item-info"><div class="pil-item-title">${esc(l.nom||l.titre||'—')}</div></div><span class="pil-deadline ${cls}">${txt}</span></div>`;
         }).join('')}</div></div>`:''}
       <div class="pil-section-title">Clients — ${_dl?'Vue '+_dl:'Vue croisée'}</div>
-      <div class="pil-list-grid">${Object.values(STORE.getActiveClients()).filter(c=>!_dl||STORE.clientDossierIds(c.id).some(did=>STORE.dossiers[did]?.lead===_dl)).slice(0,6).map(c=>{
+      <div class="pil-list-grid">${Object.values(STORE.getActiveClients()).filter(c=>_clientMatchesLead(c.id,_dl)).slice(0,6).map(c=>{
         const nbL=(STORE.notion.livrables||[]).filter(l=>l.societes?.includes(c.id)||l.societe===c.id).length;
         const nbR=(STORE.notion.reunions||[]).filter(r=>r.societes?.includes(c.id)||r.societe===c.id).length;
         const ciTot=STORE.clientDossierIds(c.id).reduce((s,did)=>s+(STORE.calcCI(STORE.dossiers[did]||{}).montantCI||0),0);
@@ -6980,6 +6978,37 @@ const _LEADS=[
   {lead:'Axel',lbl:'Axel',abbr:'AH',bg:'linear-gradient(135deg,#00b36e,#00FF9C)',color:'#090B33'},
   {lead:'Lucile',lbl:'Lucile',abbr:'LB',bg:'linear-gradient(135deg,#c0125e,#F91575)',color:'#fff'},
 ];
+// Teste si un client appartient a une vue Lead
+// Regle : lead du client SI dossier OU livrable OU reunion avec ce lead
+// Items sans lead -> visibles pour tout le monde
+function _clientMatchesLead(clientId, lead){
+  if(!lead) return true; // Vue globale
+  const dids = STORE.clientDossierIds(clientId);
+  // 1. Dossier avec ce lead
+  if(dids.some(did=>STORE.dossiers[did]?.lead===lead)) return true;
+  // 2. Livrable avec ce lead (lie a un dossier du client)
+  const lv = STORE.notion.livrables||[];
+  if(lv.some(l=>l.lead===lead&&[].concat(l.rel_dossiers||[]).some(did=>dids.includes(did)))) return true;
+  // 3. Reunion avec ce lead
+  const ru = STORE.notion.reunions||[];
+  if(ru.some(r=>r.lead===lead&&[].concat(r.rel_dossiers||[]).some(did=>dids.includes(did)))) return true;
+  // 4. Livrable ou reunion lie directement a la societe (via societe notionPageId)
+  const cPid = STORE.clients[clientId]?.notionPageId||'';
+  if(cPid){
+    if(lv.some(l=>l.lead===lead&&[].concat(l.societe||[]).includes(cPid))) return true;
+    if(ru.some(r=>r.lead===lead&&[].concat(r.societe||[]).includes(cPid))) return true;
+  }
+  return false;
+}
+
+// Filtre pour livrables/reunions :
+// Afficher si lead correspond OU si pas de lead (visible pour tous)
+function _itemMatchesLead(item, lead){
+  if(!lead) return true; // Vue globale
+  if(!item.lead) return true; // Pas de lead = visible par tous
+  return item.lead === lead;
+}
+
 function _updateLeadBadge(lead){
   const av=document.getElementById('nav-lead-av');if(!av)return;
   const cfg=_LEADS.find(l=>l.lead===lead)||_LEADS[0];
