@@ -476,9 +476,12 @@ input[list]::-webkit-calendar-picker-indicator{opacity:.3;filter:invert(1);}
 .dos-sub{font-size:10.5px;color:var(--t40);}
 
 /* Dossier view */
-.dos-view{display:flex;height:100%;overflow:hidden;}
-.dos-main{flex:1;overflow-y:auto;}
-.dos-right{width:320px;flex-shrink:0;border-left:1px solid var(--border);background:rgba(0,0,0,.18);overflow-y:auto;padding:16px;}
+/* Dossier CI - layout M maquette: calcul gauche fixe, onglets droite */
+.dos-view{display:flex;flex-direction:column;height:100%;overflow:hidden;}
+.dos-body{display:flex;flex:1;overflow:hidden;}
+.dos-left{width:248px;flex-shrink:0;border-right:1px solid var(--border);background:rgba(0,0,0,.18);overflow-y:auto;padding:14px;}
+.dos-main{flex:1;overflow-y:auto;padding:0 0 14px;}
+.dos-right{width:248px;flex-shrink:0;border-right:1px solid var(--border);background:rgba(0,0,0,.18);overflow-y:auto;padding:14px;}
 .breadcrumb{display:flex;align-items:center;gap:6px;font-size:11.5px;color:var(--t40);padding:16px 24px 0;}
 .bc-link{cursor:pointer;transition:color .12s;font-weight:600;}.bc-link:hover{color:var(--green);}
 .bc-sep{color:var(--border2);}
@@ -682,6 +685,42 @@ tr:hover td{background:rgba(255,255,255,.02);}
 .pil-sponsor{font-size:11px;font-weight:600;color:var(--t60);}
 .pil-cache-info{font-size:10px;color:var(--t40);font-style:italic;margin-top:12px;text-align:right;}
 .pil-section-title{font-size:9.5px;font-weight:800;text-transform:uppercase;letter-spacing:.15em;color:var(--t40);margin-bottom:10px;}
+
+/* -- Overview M1+M3 redesign -- */
+.ov-urgbar{background:rgba(212,83,126,.07);border-bottom:0.5px solid rgba(212,83,126,.18);padding:7px 16px;display:flex;align-items:center;gap:10px;flex-wrap:wrap;}
+.ov-urgtag{font-size:8px;font-weight:800;text-transform:uppercase;letter-spacing:.12em;color:#993556;background:rgba(212,83,126,.15);border:0.5px solid rgba(212,83,126,.25);padding:2px 8px;border-radius:3px;flex-shrink:0;}
+.ov-urglist{display:flex;gap:14px;flex:1;flex-wrap:wrap;}
+.ov-urgitem{display:flex;align-items:center;gap:5px;}
+.ov-urgdot{width:5px;height:5px;border-radius:50%;flex-shrink:0;}
+.ov-urgtxt{font-size:10px;color:rgba(255,255,255,.65);}
+.ov-urgwho{font-size:9px;color:rgba(255,255,255,.28);}
+.ov-panel{background:rgba(255,255,255,.03);border:0.5px solid rgba(255,255,255,.08);border-radius:8px;padding:11px 12px;}
+.ov-ph{font-size:8px;font-weight:800;text-transform:uppercase;letter-spacing:.14em;color:rgba(255,255,255,.28);margin-bottom:9px;display:flex;justify-content:space-between;align-items:center;}
+.ov-ph .sub{font-weight:500;text-transform:none;letter-spacing:0;font-size:9px;}
+.ov-week{display:grid;grid-template-columns:repeat(7,minmax(0,1fr));gap:4px;}
+.ov-wd{display:flex;flex-direction:column;gap:3px;}
+.ov-wdl{font-size:8px;font-weight:700;color:rgba(255,255,255,.22);text-align:center;text-transform:uppercase;letter-spacing:.06em;padding-bottom:3px;border-bottom:0.5px solid rgba(255,255,255,.06);margin-bottom:2px;}
+.ov-wdl.tod{color:#7BBBF5;border-bottom-color:rgba(123,187,245,.3);}
+.ov-we{padding:2px 4px;border-radius:3px;font-size:8px;line-height:1.3;overflow:hidden;white-space:nowrap;text-overflow:ellipsis;}
+.ov-we.lv{background:rgba(24,0,255,.16);color:#88aaff;border-left:2px solid rgba(24,0,255,.55);}
+.ov-we.re{background:rgba(212,83,126,.1);color:#ED93B1;border-left:2px solid rgba(212,83,126,.45);}
+.ov-alrt{display:flex;gap:7px;align-items:flex-start;padding:5px 0;border-bottom:0.5px solid rgba(255,255,255,.05);}
+.ov-alrt:last-child{border-bottom:none;}
+.ov-adot{width:5px;height:5px;border-radius:50%;flex-shrink:0;margin-top:3px;}
+.ov-atxt{font-size:9.5px;color:rgba(255,255,255,.55);line-height:1.4;flex:1;}
+.ov-awho{font-size:8.5px;color:rgba(255,255,255,.25);flex-shrink:0;}
+.ov-clrow{display:flex;align-items:center;gap:8px;padding:6px 0;border-bottom:0.5px solid rgba(255,255,255,.05);cursor:pointer;}
+.ov-clrow:last-child{border-bottom:none;}
+.ov-clrow:hover{background:rgba(255,255,255,.02);border-radius:5px;}
+.ov-clico{width:26px;height:26px;border-radius:6px;display:flex;align-items:center;justify-content:center;font-size:9.5px;font-weight:800;flex-shrink:0;}
+.ov-clinfo{flex:1;min-width:0;}
+.ov-clname{font-size:10.5px;font-weight:600;color:rgba(255,255,255,.82);white-space:nowrap;overflow:hidden;text-overflow:ellipsis;}
+.ov-clact{font-size:9px;color:rgba(255,255,255,.35);margin-top:1px;white-space:nowrap;overflow:hidden;text-overflow:ellipsis;}
+.ov-prog{height:2px;border-radius:2px;background:rgba(255,255,255,.07);margin-top:3px;}
+.ov-progf{height:100%;border-radius:2px;}
+.ov-clmeta{display:flex;flex-direction:column;align-items:flex-end;gap:3px;flex-shrink:0;}
+.ov-clci{font-size:9px;font-weight:700;}
+.ov-clbadge{font-size:7.5px;padding:1px 5px;border-radius:3px;font-weight:700;letter-spacing:.03em;}
 </style>
 
 </head>
@@ -2460,58 +2499,53 @@ function renderDossierView(container){
     ...(d.prestations||[]),...(d.subventions||[])
   ].some(r=>r._syncError);
   container.innerHTML=`<div class="dos-view">
-    <div class="dos-main">
-      <div class="breadcrumb">
-        <span class="bc-link" onclick="ciNav('portfolio')">Portefeuille</span>
-        <span class="bc-sep">›</span>
-        <span class="bc-link" onclick="ciNav('client','${esc(d.clientId)}')">${esc(c?.name||d.clientId)}</span>
-        <span class="bc-sep">›</span>
-        <span>${d.dispositif} ${d.annee}</span>
-      </div>
-      <div class="dos-title-bar">
-        <div class="dos-title">${d.dispositif} ${d.annee}</div>
-        ${_hasLineSyncErr?'<span class="chip chip-pink" style="font-size:8.5px;" title="Des lignes ont des erreurs de sync">\u26a0 Erreur sync</span>':''}
-        <span class="chip ${d.validation?'chip-ok':'chip-gold'}">${d.validation?'Validé':'En cours'}</span>
-        ${d.notionPageId?`<a href="https://www.notion.so/${d.notionPageId.replace(/-/g,'')}" target="_blank" class="chip" style="background:rgba(24,0,255,.15);color:#8899FF;font-size:8.5px;text-decoration:none;" title="Ouvrir dans Notion">↗ Notion</a>`:''}
-        ${d.lead?`<span class='chip' style='background:${{Paul:'rgba(55,138,221,.2)',Guillaume:'rgba(83,74,183,.2)',Axel:'rgba(0,255,156,.12)',Lucile:'rgba(249,21,117,.15)'}[d.lead]||'var(--t08)'};color:${{Paul:'#378ADD',Guillaume:'#8877EE',Axel:'var(--green)',Lucile:'var(--pink)'}[d.lead]||'var(--t60)'};cursor:pointer;' onclick='dosEditLead("${esc(d.id)}")'>👤 ${esc(d.lead)}</span>`:`<button class='btn btn-ghost btn-sm' style='font-size:9px;padding:2px 8px;' onclick='dosEditLead("${esc(d.id)}")'>+ Lead</button>`}
-        <select style="background:transparent;border:1px solid ${(d.priorite||'Moyenne')==='Haute'?'rgba(249,21,117,.4)':(d.priorite||'Moyenne')==='Basse'?'rgba(255,255,255,.12)':'rgba(255,215,0,.3)'};color:${(d.priorite||'Moyenne')==='Haute'?'var(--pink)':(d.priorite||'Moyenne')==='Basse'?'var(--t40)':'var(--gold)'};border-radius:99px;padding:2px 10px;font-family:var(--font);font-size:9.5px;font-weight:800;outline:none;cursor:pointer;text-transform:uppercase;letter-spacing:.05em;"
-          onchange="STORE.updateDossier('${esc(d.id)}','priorite',this.value);tabRefresh()">
-          ${['Haute','Moyenne','Basse'].map(p=>`<option value="${p}" style="background:var(--navy-card);color:#fff;" ${(d.priorite||'Moyenne')===p?'selected':''}>${p}</option>`).join('')}
-        </select>
-        ${d.statut_jei?'<span class="chip chip-pink">JEI</span>':''}
-        ${d.entreprise_nouvelle?'<span class="chip chip-blue">1ère déc.</span>':''}
-        ${(()=>{
-          // Alertes calculées automatiquement
-          const ciA=STORE.calcCI(d);
-          const autoAlerts=(ciA.alerts||[]).map(a=>a.code);
-          // Alertes manuelles choisies par l'utilisateur
+    <div class="breadcrumb" style="padding:10px 16px 0;">
+      <span class="bc-link" onclick="ciNav('portfolio')">Portefeuille</span>
+      <span class="bc-sep">\u203a</span>
+      <span class="bc-link" onclick="ciNav('client','${esc(d.clientId)}')">${esc(c?.name||d.clientId)}</span>
+      <span class="bc-sep">\u203a</span>
+      <span>${d.dispositif} ${d.annee}</span>
+    </div>
+    <div class="dos-title-bar">
+      <div class="dos-title">${d.dispositif} ${d.annee}</div>
+      ${_hasLineSyncErr?'<span class="chip chip-pink" style="font-size:8.5px;" title="Des lignes ont des erreurs de sync">\u26a0 Erreur sync</span>':''}
+      <span class="chip ${d.validation?'chip-ok':'chip-gold'}">${d.validation?'Valid\u00e9':'En cours'}</span>
+      ${d.notionPageId?`<a href="https://www.notion.so/${d.notionPageId.replace(/-/g,'')}" target="_blank" class="chip" style="background:rgba(24,0,255,.15);color:#8899FF;font-size:8.5px;text-decoration:none;" title="Ouvrir dans Notion">\u2197 Notion</a>`:''}
+      ${d.lead?`<span class='chip' style='background:${{Paul:'rgba(55,138,221,.2)',Guillaume:'rgba(83,74,183,.2)',Axel:'rgba(0,255,156,.12)',Lucile:'rgba(249,21,117,.15)'}[d.lead]||'var(--t08)'};color:${{Paul:'#378ADD',Guillaume:'#8877EE',Axel:'var(--green)',Lucile:'var(--pink)'}[d.lead]||'var(--t60)'};cursor:pointer;' onclick='dosEditLead("${esc(d.id)}")'>\uD83D\uDC64 ${esc(d.lead)}</span>`:`<button class='btn btn-ghost btn-sm' style='font-size:9px;padding:2px 8px;' onclick='dosEditLead("${esc(d.id)}")'>+ Lead</button>`}
+      <select style="background:transparent;border:1px solid ${(d.priorite||'Moyenne')==='Haute'?'rgba(249,21,117,.4)':( d.priorite||'Moyenne')==='Basse'?'rgba(255,255,255,.12)':'rgba(255,215,0,.3)'};color:${(d.priorite||'Moyenne')==='Haute'?'var(--pink)':( d.priorite||'Moyenne')==='Basse'?'var(--t40)':'var(--gold)'};border-radius:99px;padding:2px 10px;font-family:var(--font);font-size:9.5px;font-weight:800;outline:none;cursor:pointer;text-transform:uppercase;letter-spacing:.05em;"
+        onchange="STORE.updateDossier('${esc(d.id)}','priorite',this.value);tabRefresh()">
+        ${['Haute','Moyenne','Basse'].map(p=>`<option value="${p}" style="background:var(--navy-card);color:#fff;" ${(d.priorite||'Moyenne')===p?'selected':''  }>${p}</option>`).join('')}
+      </select>
+      ${d.statut_jei?'<span class="chip chip-pink">JEI</span>':''}
+      ${d.entreprise_nouvelle?'<span class="chip chip-blue">1\u00e8re d\u00e9c.</span>':''}
+      ${(()=>{
+          const ciA=STORE.calcCI(d);const autoAlerts=(ciA.alerts||[]).map(a=>a.code);
           const manualAlerts=[].concat(d.alertes_reglementaires||[]);
-          // Union des deux
           const allAlerts=[...new Set([...autoAlerts,...manualAlerts])];
           if(!allAlerts.length) return '';
-          const colorMap={CII_PLAFOND:'chip-gold',CIR_SEUIL_100M:'chip-blue',NO_PERSONNEL:'chip-pink',
-            PERSONNEL_SANS_DIPLOME:'chip-gold',CONTRAT_NON_ELIGIBLE:'chip-pink',PRESTATION_SANS_AGREMENT:'chip-gold',
-            PRESTA_PLAFOND:'chip-gold',CI_NUL:'chip-muted',JEI_REMBOURSEMENT:'chip-ok',ENT_NOUVELLE:'chip-blue'};
-          return allAlerts.map(code=>`<span class="chip ${colorMap[code]||'chip-muted'}" style="font-size:8.5px;" title="${esc(code)}">⚠ ${esc(code.replace(/_/g,' '))}</span>`).join('');
+          const colorMap={CII_PLAFOND:'chip-gold',CIR_SEUIL_100M:'chip-blue',NO_PERSONNEL:'chip-pink',PERSONNEL_SANS_DIPLOME:'chip-gold',CONTRAT_NON_ELIGIBLE:'chip-pink',PRESTATION_SANS_AGREMENT:'chip-gold',PRESTA_PLAFOND:'chip-gold',CI_NUL:'chip-muted',JEI_REMBOURSEMENT:'chip-ok',ENT_NOUVELLE:'chip-blue'};
+          return allAlerts.map(code=>`<span class="chip ${colorMap[code]||'chip-muted'}" style="font-size:8.5px;" title="${esc(code)}">\u26a0 ${esc(code.replace(/_/g,' '))}</span>`).join('');
         })()}
-        <div style="margin-left:auto;display:flex;gap:8px;">
-          <button class="btn btn-${d.validation?'ghost':'green'} btn-sm" onclick="STORE.updateDossier('${esc(d.id)}','validation',${!d.validation});renderDossierView(document.getElementById('ci-content'));">
-            ${d.validation?'↩ En cours':'✓ Valider'}
-          </button>
-          <button class="btn btn-blue btn-sm" style="font-size:10px;"
-            onclick="ciSyncDossier('${esc(d.id)}')" title="Forcer la synchronisation de ce dossier vers Notion">
-            ⇄ Sync Notion
-          </button>
-          <button class="btn btn-danger btn-sm" onclick="_confirmBox('Supprimer ce dossier ?',()=>{STORE.removeDossier('${esc(d.id)}');ciNav('client','${esc(d.clientId)}');;})">🗑</button>
-        </div>
+      <div style="margin-left:auto;display:flex;gap:8px;">
+        <button class="btn btn-${d.validation?'ghost':'green'} btn-sm" onclick="STORE.updateDossier('${esc(d.id)}','validation',${!d.validation});renderDossierView(document.getElementById('ci-content'));">
+          ${d.validation?'\u21a9 En cours':'\u2713 Valider'}
+        </button>
+        <button class="btn btn-blue btn-sm" style="font-size:10px;" onclick="ciSyncDossier('${esc(d.id)}')" title="Forcer la synchronisation">
+          \u21c4 Sync
+        </button>
+        <button class="btn btn-danger btn-sm" onclick="_confirmBox('Supprimer ce dossier ?',()=>{STORE.removeDossier('${esc(d.id)}');ciNav('client','${esc(d.clientId)}');;})">\uD83D\uDDD1</button>
       </div>
-      <div class="dtabs">
-        ${tabs.map(t=>`<div class="dtab ${_ciTab===t.id?'active':''}" onclick="_ciTab='${t.id}';renderDossierView(document.getElementById('ci-content'))">${t.l}</div>`).join('')}
-      </div>
-      <div id="ci-tab-body">${renderTab(d)}</div>
     </div>
-    <div class="dos-right">${renderCalcPanel(d,ci)}${renderPilRelations(d)}</div>
-  </div>`;
+    <div class="dos-body">
+      <div class="dos-left">${renderCalcPanel(d,ci)}</div>
+      <div class="dos-main">
+        <div class="dtabs" style="padding:0 16px;">
+          ${tabs.map(t=>`<div class="dtab ${_ciTab===t.id?'active':''}" onclick="_ciTab='${t.id}';renderDossierView(document.getElementById('ci-content'))">${t.l}</div>`).join('')}
+        </div>
+        <div id="ci-tab-body" style="padding:0 16px;">${renderTab(d)}</div>
+        <div style="margin:12px 16px 0;border-top:0.5px solid rgba(255,255,255,.07);padding-top:10px;">${renderPilRelations(d)}</div>
+      </div>
+    </div>`;
   // Activer les boutons de form + SS apres render
   _bindFormBtns(_ciDossierId);
   SS.clear();
@@ -5333,85 +5367,189 @@ function renderOverview(){
       +'<button onclick="STORE.setLead(\'\')" style="margin-left:auto;padding:3px 11px;border-radius:99px;border:1px solid rgba(255,255,255,.25);background:rgba(0,0,0,.2);color:rgba(255,255,255,.65);font-family:var(--font);font-size:10px;cursor:pointer;">� Vue globale</button>'
       +'</div>';
   })():'';
-  // Bandeau urgences CI
-  const _dosAlertes=Object.values(STORE.dossiers).filter(d=>{
-    if(!d.dispositif)return false;
-    if(_lead&&d.lead&&d.lead!==_lead)return false;
-    return (STORE.calcCI(d).alerts||[]).some(a=>a.level==='err');
-  });
-  const _urgencyBand=_dosAlertes.length
-    ?'<div style="margin-bottom:12px;padding:8px 14px;border-radius:var(--r-sm);background:rgba(249,21,117,.06);border:1px solid rgba(249,21,117,.2);border-left:3px solid var(--pink);display:flex;align-items:center;gap:10px;">'
-    +'<span style="font-size:11px;font-weight:700;color:var(--pink);">\u26a0 '+_dosAlertes.length+' dossier'+(_dosAlertes.length>1?'s':'')+' avec alertes r\u00e9gl. actives</span>'
-    +'<span style="font-size:10px;color:var(--t60);margin-left:4px;">'+_dosAlertes.slice(0,3).map(d=>{const cn=STORE.clients[d.clientId]?.name||'?';const codes=(STORE.calcCI(d).alerts||[]).filter(a=>a.level==='err').map(a=>a.code).join(', ');return esc(cn)+'('+codes+')';}).join(' \u00b7 ')+'</span>'
-    +'<button onclick="nav(\'ci\')" style="margin-left:auto;padding:2px 10px;border-radius:99px;border:1px solid rgba(249,21,117,.3);background:rgba(249,21,117,.1);color:var(--pink);font-family:var(--font);font-size:9.5px;cursor:pointer;font-weight:700;">Voir CI \u2192</button>'
-    +'</div>':'';
 
-  // Graphique CA mensuel + toggle
-  const _caMode=(STORE.cockpit&&STORE.cockpit._caMode)||'emission';
-  const _mois=['Jan','F\u00e9v','Mar','Avr','Mai','Jun','Jul','Ao\u00fb','Sep','Oct','Nov','D\u00e9c'];
-  const _caByMonth=Array(12).fill(0);
-  _factures.forEach(f=>{
-    const _dt=_caMode==='encaissement'?(f.statut==='Pay\u00e9e'?f.date_echeance||f.date:null):f.date;
-    if(!_dt)return;
-    const _dd=new Date(_dt+' ');
-    if(!isNaN(_dd)&&_dd.getFullYear()===_yr)_caByMonth[_dd.getMonth()]+=(parseFloat(f.montant)||0);
-  });
-  const _caMax=Math.max(..._caByMonth,1);
-  const _caTotal=_caByMonth.reduce((s,v)=>s+v,0);
-  const _sBtnE=_caMode==='emission'?'border:1px solid var(--green);background:rgba(0,255,156,.15);color:var(--green);':'border:1px solid rgba(255,255,255,.2);background:transparent;color:var(--t40);';
-  const _sBtnN=_caMode==='encaissement'?'border:1px solid var(--green);background:rgba(0,255,156,.15);color:var(--green);':'border:1px solid rgba(255,255,255,.2);background:transparent;color:var(--t40);';
-  const _caGraph=_caTotal>0
-    ?'<div style="margin-bottom:16px;padding:12px 14px;border-radius:var(--r-sm);background:rgba(0,0,0,.15);border:1px solid rgba(255,255,255,.07);">'
-    +'<div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:10px;">'
-    +'<span style="font-size:9.5px;font-weight:800;text-transform:uppercase;letter-spacing:.15em;color:var(--t40);">CA mensuel '+_yr+'</span>'
-    +'<div style="display:flex;gap:4px;">'
-    +'<button id="ca-btn-em" style="padding:2px 8px;border-radius:99px;font-family:var(--font);font-size:9px;cursor:pointer;'+_sBtnE+'">'+'\u00c9mission</button>'
-    +'<button id="ca-btn-en" style="padding:2px 8px;border-radius:99px;font-family:var(--font);font-size:9px;cursor:pointer;'+_sBtnN+'">Encaissement</button>'
-    +'</div></div>'
-    +'<div style="display:flex;align-items:flex-end;gap:3px;height:54px;">'
-    +_caByMonth.map((v,i)=>'<div style="flex:1;display:flex;flex-direction:column;align-items:center;gap:2px;">'
-        +'<div style="width:100%;background:'+(v>0?'rgba(0,255,156,.7)':'rgba(255,255,255,.1)')+';border-radius:2px 2px 0 0;height:'+(v>0?Math.max(4,Math.round(v/_caMax*50)):2)+'px;" title="'+_mois[i]+': '+EUR(Math.round(v))+'"></div>'
-        +'<div style="font-size:7px;color:var(--t40);">'+_mois[i].substring(0,1)+'</div>'
-      +'</div>').join('')
-    +'</div></div>'
-    :'';
+  // Overview M1+M3 redesign
 
-  document.getElementById('panel-overview').innerHTML='<div class="ov-wrap" style="overflow-y:auto;height:100%;"><div style="padding:20px 24px;">'
-    +_leadBanner+kpiBlock+_urgencyBand+_caGraph
-    +'<div style="display:grid;grid-template-columns:1fr 300px;gap:20px;">'
-      +'<div>'
-        +(isEmpty?'<div style="text-align:center;padding:30px;color:var(--t40);"><div style="font-size:28px;margin-bottom:8px;">\u2713</div><div style="font-size:14px;font-weight:700;">Tout est \u00e0 jour</div><div style="font-size:12px;margin-top:4px;">Aucun \u00e9l\u00e9ment en retard ou \u00e0 traiter cette semaine</div></div>':'')
-        +renderSection('late','En retard','var(--pink)',buckets.late)
-        +renderSection('today',"Aujourd\u2019hui",'var(--green)',buckets.today)
-        +renderSection('week','Cette semaine','#378ADD',buckets.week)
-        +(buckets.urgent.length?renderSection('urgent','Haute priorit\u00e9','var(--gold)',buckets.urgent):'')
-        +(!buckets.today.length&&!buckets.late.length?'<div style="padding:8px;border:1px solid rgba(0,255,156,.15);border-radius:var(--r-sm);background:rgba(0,255,156,.04);font-size:11px;color:var(--t60);text-align:center;">\u2714 Aucune \u00e9ch\u00e9ance aujourd\u2019hui</div>':'')
-        +(nextClients.length?'<div style="margin-top:16px;">'
-          +'<div style="font-size:9.5px;font-weight:800;text-transform:uppercase;letter-spacing:.15em;color:var(--t40);margin-bottom:8px;padding-bottom:6px;border-bottom:1px solid rgba(255,255,255,.08);">Clients \u2014 prochaine \u00e9ch\u00e9ance</div>'
-          +'<div style="display:flex;flex-direction:column;gap:4px;">'
-          +nextClients.map(({c,nextD})=>{
-            const d=new Date(nextD.deadline+' ');const diff=Math.ceil((d-now)/86400000);
-            const cls=diff<0?'pil-dl-late':diff<=7?'pil-dl-soon':'pil-dl-ok';
-            const txt=diff<0?(-diff)+'j retard':diff===0?'Auj.':diff+'j';
-            return '<div style="display:flex;align-items:center;gap:10px;padding:7px 10px;border-radius:var(--r-sm);border:1px solid rgba(255,255,255,.07);background:rgba(0,0,0,.1);cursor:pointer;" onclick="nav(\'ci\');setTimeout(()=>ciNav(\'client\',\''+esc(c.id)+'\'),100)">'
-              +'<div style="width:24px;height:24px;border-radius:6px;background:rgba(255,255,255,.07);display:flex;align-items:center;justify-content:center;font-size:10px;font-weight:800;color:var(--t60);">'+esc(c.name.charAt(0))+'</div>'
-              +'<div style="flex:1;min-width:0;"><div style="font-size:12px;font-weight:600;">'+esc(c.name)+'</div>'
-              +'<div style="font-size:10px;color:var(--t40);overflow:hidden;text-overflow:ellipsis;white-space:nowrap;">\uD83D\uDCE6 '+esc(nextD.nom||'—')+'</div></div>'
-              +'<span class="pil-deadline '+cls+'" style="font-size:9px;">'+txt+'</span>'
-            +'</div>';}).join('')
-          +'</div></div>':'')
+  // Bandeau urgences (liste horizontale inline)
+  const _allUrgItems=[];
+  lv.filter(l=>l.statut!=='Termin\u00e9'&&l.statut!=='Annul\u00e9'&&l.deadline&&new Date(l.deadline+' ')-now<7*86400000).slice(0,3).forEach(l=>{
+    const d=new Date(l.deadline+' ');const diff=Math.ceil((d-now)/86400000);
+    const txt=diff<0?(-diff)+'j retard':diff===0?'Auj.':diff+'j';
+    const col=diff<0?'#ED93B1':'#FAC775';
+    _allUrgItems.push({col,txt:esc(l.nom||l.titre||'\u2014'),detail:txt,who:esc(l.lead||'')});
+  });
+  Object.values(STORE.dossiers).filter(d=>!_lead||!d.lead||d.lead===_lead).forEach(d=>{
+    const errs=(STORE.calcCI(d).alerts||[]).filter(a=>a.level==='err');
+    if(!errs.length)return;
+    const cn=STORE.clients[d.clientId]?.name||'?';
+    _allUrgItems.push({col:'#ED93B1',txt:esc(cn)+' \u2014 '+esc(d.dispositif)+' '+d.annee,detail:errs[0].code.replace(/_/g,' '),who:esc(d.lead||'')});
+  });
+
+  const _urgBand=_allUrgItems.length
+    ?'<div class="ov-urgbar">'
+      +'<div class="ov-urgtag">'+_allUrgItems.length+' urgence'+(_allUrgItems.length>1?'s':'')+'</div>'
+      +'<div class="ov-urglist">'
+      +_allUrgItems.slice(0,5).map(u=>'<div class="ov-urgitem">'
+        +'<div class="ov-urgdot" style="background:'+u.col+'"></div>'
+        +'<span class="ov-urgtxt">'+u.txt+'&nbsp;<span style="color:'+u.col+';font-weight:700;">'+u.detail+'</span></span>'
+        +(u.who?'<span class="ov-urgwho">'+u.who+'</span>':'')
+        +'</div>').join('')
       +'</div>'
-      +'<div>'
-        +alertBlock+objBlock+eqBlock
-        +'<div style="display:grid;grid-template-columns:1fr 1fr;gap:5px;margin-top:4px;">'
-          +'<button class="btn btn-ghost btn-sm" style="font-size:10px;" onclick="nav(\'ci\')">\u2192 Espace CI</button>'
-          +'<button class="btn btn-ghost btn-sm" style="font-size:10px;" onclick="nav(\'pilotage\')">\u2192 Pilotage</button>'
-          +'<button class="btn btn-ghost btn-sm" style="font-size:10px;" onclick="nav(\'cockpit\')">\u2192 Cockpit</button>'
-          +'<button class="btn btn-ghost btn-sm" style="font-size:10px;" onclick="openModal()">\u21ba Donn\u00e9es</button>'
+      +'<button onclick="nav(\'pilotage\')" style="margin-left:auto;padding:2px 9px;border-radius:99px;border:0.5px solid rgba(212,83,126,.3);background:rgba(212,83,126,.08);color:#ED93B1;font-family:var(--font);font-size:9px;cursor:pointer;font-weight:700;flex-shrink:0;">Voir \u2192</button>'
+    +'</div>':''
+
+  // Panel semaine en cours
+  const _ws=(()=>{const d=new Date(today);d.setDate(d.getDate()-(d.getDay()+6)%7);return d;})();
+  const _DAYS=['Lun','Mar','Mer','Jeu','Ven','Sam','Dim'];
+  const _wi={};
+  lv.filter(l=>l.deadline&&l.statut!=='Termin\u00e9'&&l.statut!=='Annul\u00e9').forEach(l=>{
+    const d=new Date(l.deadline+' ');if(isNaN(d))return;
+    const ws2=new Date(_ws);ws2.setHours(0,0,0,0);const we2=new Date(ws2);we2.setDate(we2.getDate()+7);
+    if(d>=ws2&&d<we2){const k=l.deadline.slice(0,10);if(!_wi[k])_wi[k]=[];_wi[k].push({t:'lv',n:l.nom||l.titre||'\u2014'});}
+  });
+  ru.filter(r=>r.date&&r.statut!=='R\u00e9alis\u00e9e'&&r.statut!=='Annul\u00e9e').forEach(r=>{
+    const d=new Date(r.date+' ');if(isNaN(d))return;
+    const ws2=new Date(_ws);ws2.setHours(0,0,0,0);const we2=new Date(ws2);we2.setDate(we2.getDate()+7);
+    if(d>=ws2&&d<we2){const k=r.date.slice(0,10);if(!_wi[k])_wi[k]=[];_wi[k].push({t:'re',n:r.nom||r.titre||'\u2014'});}
+  });
+  const _todS=today.toISOString().slice(0,10);
+  const _weCols=_DAYS.map((dl,i)=>{
+    const d=new Date(_ws);d.setDate(d.getDate()+i);
+    const iso=d.toISOString().slice(0,10);
+    const isT=iso===_todS;
+    const its=_wi[iso]||[];
+    return '<div class="ov-wd"><div class="ov-wdl'+(isT?' tod':'')+'">'+(dl)+'</div>'
+      +its.slice(0,3).map(it=>'<div class="ov-we '+it.t+'" title="'+esc(it.n)+'">'+esc(it.n.slice(0,14))+'</div>').join('')
+      +'</div>';
+  }).join('');
+  const _weDates=_ws.toLocaleDateString('fr-FR',{day:'2-digit',month:'short'})+'\u2013'+new Date(_ws.getTime()+6*86400000).toLocaleDateString('fr-FR',{day:'2-digit',month:'short'});
+  const _weekPanel='<div class="ov-panel">'
+    +'<div class="ov-ph">Semaine en cours <span class="sub">'+_weDates+'</span></div>'
+    +'<div class="ov-week">'+_weCols+'</div>'
+    +'<div style="display:flex;gap:10px;margin-top:7px;">'
+      +'<div style="display:flex;align-items:center;gap:4px"><div style="width:8px;height:8px;border-radius:2px;background:rgba(24,0,255,.3)"></div><div style="font-size:8px;color:rgba(255,255,255,.25)">Livrable</div></div>'
+      +'<div style="display:flex;align-items:center;gap:4px"><div style="width:8px;height:8px;border-radius:2px;background:rgba(212,83,126,.25)"></div><div style="font-size:8px;color:rgba(255,255,255,.25)">R\u00e9union</div></div>'
+    +'</div>'
+  +'</div>';
+
+  // Panel CA redesign
+  const _caPanel=_caTotal>0?'<div class="ov-panel">'
+    +'<div class="ov-ph">CA mensuel '+_yr+' <span class="sub">'
+      +'<button id="ca-btn-em" style="padding:1px 7px;border-radius:99px;font-family:var(--font);font-size:8px;cursor:pointer;'+_sBtnE+'">\u00c9mission</button>'
+      +' <button id="ca-btn-en" style="padding:1px 7px;border-radius:99px;font-family:var(--font);font-size:8px;cursor:pointer;'+_sBtnN+'">Encaissement</button>'
+    +'</span></div>'
+    +'<div style="display:flex;align-items:flex-end;gap:4px;height:52px;margin-bottom:5px;">'
+    +_caByMonth.map((v,i)=>{
+      const isMx=v===_caMax&&v>0;
+      const bg=isMx?'rgba(55,138,221,.5)':'rgba(0,204,122,.3)';
+      return '<div style="flex:1;display:flex;flex-direction:column;align-items:center;gap:2px;">'
+        +(v>0?'<div style="font-size:6.5px;color:rgba(255,255,255,.35);font-weight:600;">'+Math.round(v/1000)+'k</div>':'<div style="font-size:6.5px;color:rgba(255,255,255,.12);">\u2014</div>')
+        +'<div style="width:100%;border-radius:2px 2px 0 0;background:'+(v>0?bg:'rgba(255,255,255,.06)')+';height:'+(v>0?Math.max(3,Math.round(v/_caMax*40)):3)+'px;" title="'+_mois[i]+': '+EUR(Math.round(v))+'"></div>'
+        +'<div style="font-size:6.5px;color:rgba(255,255,255,.18);">'+_mois[i].substring(0,1)+'</div>'
+        +'</div>';
+    }).join('')
+    +'</div>'
+    +'<div style="display:flex;gap:10px;">'
+      +'<div style="display:flex;align-items:center;gap:4px"><div style="width:8px;height:8px;border-radius:2px;background:rgba(0,204,122,.35)"></div><div style="font-size:8px;color:rgba(255,255,255,.25)">R\u00e9alis\u00e9</div></div>'
+      +'<div style="display:flex;align-items:center;gap:4px"><div style="width:8px;height:8px;border-radius:2px;background:rgba(55,138,221,.45)"></div><div style="font-size:8px;color:rgba(255,255,255,.25)">Pic</div></div>'
+    +'</div>'
+  +'</div>':'';
+
+  // Panel alertes reglementaires
+  const _artItems=[];
+  Object.values(STORE.dossiers).filter(d=>!_lead||!d.lead||d.lead===_lead).forEach(d=>{
+    const alts=STORE.calcCI(d).alerts||[];
+    const cn=STORE.clients[d.clientId]?.name||'?';
+    alts.slice(0,2).forEach(a=>{
+      const col=a.level==='err'?'#ED93B1':a.level==='warn'?'#FAC775':'#88aaff';
+      _artItems.push({cn:esc(cn),col,msg:esc(a.msg.slice(0,55)),who:esc(d.lead||'')});
+    });
+  });
+  const _alertsPanel='<div class="ov-panel">'
+    +'<div class="ov-ph">Alertes r\u00e9gl. <span class="sub">Art. 244 quater B</span></div>'
+    +(_artItems.slice(0,5).length?_artItems.slice(0,5).map(a=>'<div class="ov-alrt">'
+      +'<div class="ov-adot" style="background:'+a.col+'"></div>'
+      +'<div class="ov-atxt"><span style="color:'+a.col+';font-weight:700;">'+a.cn+'</span> \u2014 '+a.msg+'</div>'
+      +(a.who?'<div class="ov-awho">'+a.who+'</div>':'')
+      +'</div>').join('')
+    :'<div style="font-size:10px;color:var(--t40);padding:4px 0;">\u2713 Aucune alerte active</div>')
+  +'</div>';
+
+  // Panel clients prochaine action
+  const _cpItems=Object.values(STORE.clients)
+    .filter(c=>!_lead||_clientMatchesLead(c.id,_lead))
+    .map(c=>{
+      const dids=STORE.clientDossierIds(c.id);
+      const ciTot=dids.reduce((s,did)=>s+(STORE.calcCI(STORE.dossiers[did]||{}).montantCI||0),0);
+      const lvsC=(STORE.notion.livrables||[]).filter(l=>dids.some(did=>(l.rel_dossiers||[]).includes(did)));
+      const reuC=(STORE.notion.reunions||[]).filter(r=>dids.some(did=>(r.rel_dossiers||[]).includes(did)));
+      const nextLv=lvsC.filter(l=>l.deadline&&l.statut!=='Termin\u00e9').sort((a,b)=>new Date(a.deadline+' ')-new Date(b.deadline+' '))[0];
+      const nextReu=reuC.filter(r=>r.date&&r.statut!=='R\u00e9alis\u00e9e').sort((a,b)=>new Date(a.date+' ')-new Date(b.date+' '))[0];
+      const nxt=nextLv&&nextReu?(new Date(nextLv.deadline+' ')<new Date(nextReu.date+' ')?nextLv:nextReu):nextLv||nextReu;
+      const dl=nxt?(nxt.deadline||nxt.date):null;
+      const diff=dl?Math.ceil((new Date(dl+' ')-now)/86400000):9999;
+      const totLv=lvsC.filter(l=>l.statut!=='Annul\u00e9').length;
+      const doneLv=lvsC.filter(l=>l.statut==='Termin\u00e9').length;
+      const pct=totLv>0?Math.round(doneLv/totLv*100):0;
+      const hasErr=dids.some(did=>(STORE.calcCI(STORE.dossiers[did]||{}).alerts||[]).some(a=>a.level==='err'));
+      return {c,ciTot,nxt,diff,pct,hasErr};
+    })
+    .filter(x=>x.ciTot>0||x.nxt)
+    .sort((a,b)=>a.diff-b.diff)
+    .slice(0,5);
+
+  const _clientsPanel=_cpItems.length?'<div class="ov-panel">'
+    +'<div class="ov-ph">Clients \u00b7 prochaine action <span class="sub">'+Object.keys(STORE.clients).length+' actifs</span></div>'
+    +_cpItems.map(({c,ciTot,nxt,diff,pct,hasErr})=>{
+      const init=c.name.substring(0,2).toUpperCase();
+      const icoBg=hasErr?'rgba(212,83,126,.14)':'rgba(0,204,122,.09)';
+      const icoTxt=hasErr?'#993556':'#0F6E56';
+      const act=nxt?esc((nxt.nom||nxt.titre||'\u2014').slice(0,38)):'Aucune action planifi\u00e9e';
+      const bdgTxt=diff<0?'Retard':diff===0?'Auj.':diff<=3?'J+'+diff:diff<=14?'J+'+diff:'';
+      const bdgBg=diff<0?'rgba(212,83,126,.15)':diff<=3?'rgba(186,117,23,.14)':'rgba(0,204,122,.12)';
+      const bdgCol=diff<0?'#993556':diff<=3?'#854F0B':'#27500A';
+      const pgCol=hasErr?'#993556':pct>75?'#1D9E75':pct>40?'#BA7517':'#534AB7';
+      return '<div class="ov-clrow" onclick="nav(\'ci\');setTimeout(()=>ciNav(\'client\',\''+esc(c.id)+'\'),100)">'
+        +'<div class="ov-clico" style="background:'+icoBg+';color:'+icoTxt+';">'+init+'</div>'
+        +'<div class="ov-clinfo">'
+          +'<div class="ov-clname">'+esc(c.name)+'</div>'
+          +'<div class="ov-clact">'+act+'</div>'
+          +(pct>0?'<div class="ov-prog"><div class="ov-progf" style="width:'+pct+'%;background:'+pgCol+';"></div></div>':'')
+        +'</div>'
+        +'<div class="ov-clmeta">'
+          +(ciTot>0?'<div class="ov-clci" style="color:'+(hasErr?'#ED93B1':'#00FF9C')+';">'+EUR(Math.round(ciTot))+'</div>':'')
+          +(bdgTxt?'<div class="ov-clbadge" style="background:'+bdgBg+';color:'+bdgCol+';">'+bdgTxt+'</div>':'')
+        +'</div>'
+      +'</div>';
+    }).join('')
+  +'</div>':'';
+
+  // Assemblage final
+  document.getElementById('panel-overview').innerHTML=
+    '<div class="ov-wrap" style="overflow-y:auto;height:100%;">'
+    +(_leadBanner?'<div style="padding:10px 16px 0;">'+_leadBanner+'</div>':'')
+    +_urgBand
+    +'<div style="padding:12px 14px 14px;display:flex;flex-direction:column;gap:10px;">'
+      +kpiBlock
+      +'<div style="display:grid;grid-template-columns:1fr 310px;gap:10px;">'
+        +'<div style="display:flex;flex-direction:column;gap:10px;">'
+          +_caPanel
+          +_weekPanel
+        +'</div>'
+        +'<div style="display:flex;flex-direction:column;gap:10px;">'
+          +_alertsPanel
+          +_clientsPanel
         +'</div>'
       +'</div>'
+      +'<div style="display:grid;grid-template-columns:repeat(4,1fr);gap:6px;">'
+        +'<button class="btn btn-ghost btn-sm" style="font-size:10px;" onclick="nav(\'ci\')">\u2192 Espace CI</button>'
+        +'<button class="btn btn-ghost btn-sm" style="font-size:10px;" onclick="nav(\'pilotage\')">\u2192 Pilotage</button>'
+        +'<button class="btn btn-ghost btn-sm" style="font-size:10px;" onclick="nav(\'cockpit\')">\u2192 Cockpit</button>'
+        +'<button class="btn btn-ghost btn-sm" style="font-size:10px;" onclick="openModal()">\u21ba Donn\u00e9es</button>'
+      +'</div>'
     +'</div>'
-  +'</div></div>';
+  +'</div>';
+
 }
 
 function renderCockpit(){
@@ -5854,8 +5992,15 @@ const PIL = {
   _tabContent(){
     const t=this.state.tab;
     if(t==='dashboard')return this._dashboard();
-    if(t==='livrables')return this._leadBar()+this._list('livrables','Livrables',this._livFields());
-    if(t==='reunions') return this._leadBar()+this._list('reunions','Réunions',this._reuFields());
+    // Livrables et reunions : liste + mini-calendrier cote a cote (maquette Pilotage)
+    if(t==='livrables')return this._leadBar()+`<div style="display:grid;grid-template-columns:1fr 252px;gap:0;height:calc(100% - 2px);">`
+      +`<div style="overflow-y:auto;border-right:0.5px solid rgba(255,255,255,.07);">` +this._list('livrables','Livrables',this._livFields())+`</div>`
+      +`<div style="overflow-y:auto;padding:0 4px;">` +this._calendar()+`</div>`
+      +`</div>`;
+    if(t==='reunions') return this._leadBar()+`<div style="display:grid;grid-template-columns:1fr 252px;gap:0;">`
+      +`<div style="overflow-y:auto;border-right:0.5px solid rgba(255,255,255,.07);">` +this._list('reunions','Réunions',this._reuFields())+`</div>`
+      +`<div style="overflow-y:auto;padding:0 4px;">` +this._calendar()+`</div>`
+      +`</div>`;
     if(t==='pipeline') return this._pipeline();
     if(t==='factures') return this._list('factures','Factures',this._facFields());
     if(t==='calendrier') return this._calendar();
