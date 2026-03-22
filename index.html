@@ -3909,6 +3909,7 @@ function pers_add(did){
   renderDossierView(document.getElementById('ci-content'));toast('Personnel ajouté');
 }
 function aff_add(did){
+  const d=STORE.dossiers[did];if(!d)return;
   const nom=document.getElementById('af-nom')?.value.trim();if(!nom){toast('Nom requis','warn');return;}
   const taux=parseFloat(document.getElementById('af-taux')?.value)||0;
   const tpsProj=parseFloat(document.getElementById('af-tps-proj')?.value)||0;
