@@ -478,7 +478,7 @@ input[list]::-webkit-calendar-picker-indicator{opacity:.3;filter:invert(1);}
 /* Dossier view */
 .dos-view{display:flex;height:100%;overflow:hidden;}
 .dos-main{flex:1;overflow-y:auto;}
-.dos-right{width:280px;flex-shrink:0;border-left:1px solid var(--border);background:rgba(0,0,0,.2);overflow-y:auto;padding:18px;}
+.dos-right{width:320px;flex-shrink:0;border-left:1px solid var(--border);background:rgba(0,0,0,.18);overflow-y:auto;padding:16px;}
 .breadcrumb{display:flex;align-items:center;gap:6px;font-size:11.5px;color:var(--t40);padding:16px 24px 0;}
 .bc-link{cursor:pointer;transition:color .12s;font-weight:600;}.bc-link:hover{color:var(--green);}
 .bc-sep{color:var(--border2);}
@@ -1455,7 +1455,7 @@ const notionAPI = {
         const dossierNotionId = dossierRelIds[0] || null;
         const did = notionToDossier[dossierNotionId] || dossierNotionId;
         if (!dossiers[did]) return;
-        dossiers[did][field].push({ notionPageId: p.id, ...mapFn(p) });
+        dossiers[did][field].push({ notionPageId: p.id, notionModifiedAt: p.last_edited_time||null, ...mapFn(p) });
       });
       console.log('[notionAPI]', field, ':', pages.length);
     };
@@ -1557,11 +1557,23 @@ const syncIndicator = {
         setTimeout(()=>this._flush(),delay);return;
       }
       this._pending=Math.max(0,this._pending-1);
-      if(!result)this._errCount++;item.resolve(result);
+      if(!result){this._errCount++;}
+      else{
+        const _slp=item.label.split('_');
+        if(_slp.length>=3&&STORE.dossiers[_slp[0]]?.[_slp[1]]?.[parseInt(_slp[2])]){
+          delete STORE.dossiers[_slp[0]][_slp[1]][parseInt(_slp[2])]._syncError;
+        }
+      }
+      item.resolve(result);
     }catch(e){
       console.warn('[SyncManager]',item.label,e.message);
       this._pending=Math.max(0,this._pending-1);
-      this._errCount++;item.reject(e);
+      this._errCount++;
+      const _elp=item.label.split('_');
+      if(_elp.length>=3&&STORE.dossiers[_elp[0]]?.[_elp[1]]?.[parseInt(_elp[2])]){
+        STORE.dossiers[_elp[0]][_elp[1]][parseInt(_elp[2])]._syncError=true;
+      }
+      item.reject(e);
     }
     this._running=false;this._badge();
     if(this._queue.length)setTimeout(()=>this._flush(),50);
@@ -2038,6 +2050,27 @@ const STORE = {
       }catch(e){}
       // Si bases vides : conserver les données locales
       this.token=token; this.loadingState='ready';
+      // CDC v4 — recalcul CI si lignes modifiées depuis le dernier sync
+      const _nowSync=Date.now();
+      const _lastSync=parseInt(localStorage.getItem('pdj_last_sync')||'0');
+      let _ciChanged=false;
+      Object.values(this.dossiers).forEach(d=>{
+        const _lm=[...(d.personnel||[]),...(d.affectations||[]),...(d.amortissements||[]),...(d.prestations||[]),...(d.subventions||[])]
+          .some(r=>r.notionModifiedAt&&new Date(r.notionModifiedAt).getTime()>_lastSync);
+        if(_lm){
+          _ciChanged=true;
+          const _ci2=this.calcCI(d);
+          if(Math.abs((d.montant_ci||0)-(_ci2.montantCI||0))>0.5){
+            d.montant_ci=_ci2.montantCI;d.base_calcul=_ci2.ass;
+            if(d.notionPageId&&this.token&&notionAPI.proxyUrl){
+              const _cid2=this.clients[d.clientId]?.notionPageId||null;
+              syncIndicator.run('ci_recalc_'+d.id,()=>notionAPI.updatePage(d.notionPageId,notionAPI.dossierProps(d,_cid2)));
+            }
+          }
+        }
+      });
+      if(_ciChanged) this._saveLocal();
+      localStorage.setItem('pdj_last_sync',_nowSync.toString());
       this.emit('loading:done',data); this._saveLocal();
       console.log('[STORE] Notion:',Object.keys(data.clients).length,'clients');
       return true;
@@ -2383,6 +2416,11 @@ function renderDossierView(container){
     {id:'prestations',l:'Prestations'},{id:'subventions',l:'Subventions'},
     {id:'notes',l:'Notes 📝'},
   ];
+  // Badge sync sur le dossier
+  const _hasLineSyncErr=[
+    ...(d.personnel||[]),...(d.affectations||[]),...(d.amortissements||[]),
+    ...(d.prestations||[]),...(d.subventions||[])
+  ].some(r=>r._syncError);
   container.innerHTML=`<div class="dos-view">
     <div class="dos-main">
       <div class="breadcrumb">
@@ -2394,6 +2432,7 @@ function renderDossierView(container){
       </div>
       <div class="dos-title-bar">
         <div class="dos-title">${d.dispositif} ${d.annee}</div>
+        ${_hasLineSyncErr?'<span class="chip chip-pink" style="font-size:8.5px;" title="Des lignes ont des erreurs de sync">\u26a0 Erreur sync</span>':''}
         <span class="chip ${d.validation?'chip-ok':'chip-gold'}">${d.validation?'Validé':'En cours'}</span>
         ${d.notionPageId?`<a href="https://www.notion.so/${d.notionPageId.replace(/-/g,'')}" target="_blank" class="chip" style="background:rgba(24,0,255,.15);color:#8899FF;font-size:8.5px;text-decoration:none;" title="Ouvrir dans Notion">↗ Notion</a>`:''}
         ${d.lead?`<span class='chip' style='background:${{Paul:'rgba(55,138,221,.2)',Guillaume:'rgba(83,74,183,.2)',Axel:'rgba(0,255,156,.12)',Lucile:'rgba(249,21,117,.15)'}[d.lead]||'var(--t08)'};color:${{Paul:'#378ADD',Guillaume:'#8877EE',Axel:'var(--green)',Lucile:'var(--pink)'}[d.lead]||'var(--t60)'};cursor:pointer;' onclick='dosEditLead("${esc(d.id)}")'>👤 ${esc(d.lead)}</span>`:`<button class='btn btn-ghost btn-sm' style='font-size:9px;padding:2px 8px;' onclick='dosEditLead("${esc(d.id)}")'>+ Lead</button>`}
@@ -2425,7 +2464,7 @@ function renderDossierView(container){
             onclick="ciSyncDossier('${esc(d.id)}')" title="Forcer la synchronisation de ce dossier vers Notion">
             ⇄ Sync Notion
           </button>
-          <button class="btn btn-danger btn-sm" onclick="if(confirm('Supprimer ce dossier ?')){STORE.removeDossier('${esc(d.id)}');ciNav('client','${esc(d.clientId)}');}">🗑</button>
+          <button class="btn btn-danger btn-sm" onclick="_confirmBox('Supprimer ce dossier ?',()=>{STORE.removeDossier('${esc(d.id)}');ciNav('client','${esc(d.clientId)}');;})">🗑</button>
         </div>
       </div>
       <div class="dtabs">
@@ -3291,7 +3330,7 @@ function renderPersTab(d){
     <tbody>${rows.map((r,i)=>`<tr>
       <td class="td-act"><div style="display:flex;gap:3px;">
         <div class="btn-icon" title="Modifier" onclick="editRow('${esc(d.id)}','personnel',${i})">✏</div>
-        <div class="btn-icon del" title="Supprimer" onclick="if(confirm('Supprimer ?')){STORE.removeRow('${esc(d.id)}','personnel',${i});renderDossierView(document.getElementById('ci-content'))}">🗑</div>
+        <div class="btn-icon del" title="Supprimer" onclick="_confirmBox('Supprimer ?',()=>{STORE.removeRow(_ciDossierId,'personnel',${i});renderDossierView(document.getElementById('ci-content'));})">🗑</div>
       </div></td>
       <td><span class="editable" contenteditable onblur="ciUpdateRow('${esc(d.id)}','personnel',${i},'nom',this.textContent)">${esc(r.nom||'')}</span></td>
       ${isCIR2025?`<td>${(r.periode_2025||'').startsWith('P1')?`<span class='chip' style='background:rgba(24,0,255,.15);color:#8899FF;'>P1</span>`:(r.periode_2025||'').startsWith('P2')?`<span class='chip' style='background:rgba(0,255,156,.1);color:var(--green);'>P2</span>`:'<span class="chip chip-muted">?</span>'}</td>`:''}
@@ -3446,7 +3485,7 @@ function renderAffTab(d){
       return `<tr>
           <td class="td-act"><div style="display:flex;gap:3px;">
             <div class="btn-icon" title="Modifier" onclick="editRow('${esc(d.id)}','affectations',${i})">✏</div>
-            <div class="btn-icon del" title="Supprimer" onclick="if(confirm('Supprimer ?')){STORE.removeRow('${esc(d.id)}','affectations',${i});renderDossierView(document.getElementById('ci-content'))}">🗑</div>
+            <div class="btn-icon del" title="Supprimer" onclick="_confirmBox('Supprimer ?',()=>{STORE.removeRow(_ciDossierId,'affectations',${i});renderDossierView(document.getElementById('ci-content'));})">🗑</div>
           </div></td>
           <td style="font-weight:600;">${esc(r.nom||'')}</td>
         <td><span class="editable" contenteditable onblur="ciUpdateRow('${esc(d.id)}','affectations',${i},'projet',this.textContent)">${esc(r.projet||'')}</span></td>
@@ -3488,7 +3527,7 @@ function renderAmortTab(d){
     <tbody>${rows.map((r,i)=>`<tr>
       <td class="td-act"><div style="display:flex;gap:3px;">
         <div class="btn-icon" title="Modifier" onclick="editRow('${esc(d.id)}','amortissements',${i})">✏</div>
-        <div class="btn-icon del" title="Supprimer" onclick="if(confirm('Supprimer ?')){STORE.removeRow('${esc(d.id)}','amortissements',${i});renderDossierView(document.getElementById('ci-content'))}">🗑</div>
+        <div class="btn-icon del" title="Supprimer" onclick="_confirmBox('Supprimer ?',()=>{STORE.removeRow(_ciDossierId,'amortissements',${i});renderDossierView(document.getElementById('ci-content'));})">🗑</div>
       </div></td>
       <td><span class="editable" contenteditable onblur="ciUpdateRow('${esc(d.id)}','amortissements',${i},'libelle',this.textContent)">${esc(r.libelle||r.denomination||'')}</span></td>
       <td><span class="editable" contenteditable onblur="ciUpdateRow('${esc(d.id)}','amortissements',${i},'projet',this.textContent)">${esc(r.projet||'')}</span></td>
@@ -3528,7 +3567,7 @@ function renderPrestaTab(d){
     <tbody>${rows.map((r,i)=>`<tr>
       <td class="td-act"><div style="display:flex;gap:3px;">
         <div class="btn-icon" title="Modifier" onclick="editRow('${esc(d.id)}','prestations',${i})">✏</div>
-        <div class="btn-icon del" title="Supprimer" onclick="if(confirm('Supprimer ?')){STORE.removeRow('${esc(d.id)}','prestations',${i});renderDossierView(document.getElementById('ci-content'))}">🗑</div>
+        <div class="btn-icon del" title="Supprimer" onclick="_confirmBox('Supprimer ?',()=>{STORE.removeRow(_ciDossierId,'prestations',${i});renderDossierView(document.getElementById('ci-content'));})">🗑</div>
       </div></td>
       <td><span class="editable" contenteditable onblur="ciUpdateRow('${esc(d.id)}','prestations',${i},'sous_traitant',this.textContent)">${esc(r.sous_traitant||r.nom||'')}</span></td>
       <td class="td-mono" style="font-size:10.5px;">${esc(r.siren||'')}</td>
@@ -3565,7 +3604,7 @@ function renderSubvTab(d){
     <tbody>${rows.map((r,i)=>`<tr>
       <td class="td-act"><div style="display:flex;gap:3px;">
         <div class="btn-icon" title="Modifier" onclick="editRow('${esc(d.id)}','subventions',${i})">✏</div>
-        <div class="btn-icon del" title="Supprimer" onclick="if(confirm('Supprimer ?')){STORE.removeRow('${esc(d.id)}','subventions',${i});renderDossierView(document.getElementById('ci-content'))}">🗑</div>
+        <div class="btn-icon del" title="Supprimer" onclick="_confirmBox('Supprimer ?',()=>{STORE.removeRow(_ciDossierId,'subventions',${i});renderDossierView(document.getElementById('ci-content'));})">🗑</div>
       </div></td>
       <td><span class="editable" contenteditable onblur="ciUpdateRow('${esc(d.id)}','subventions',${i},'intitule',this.textContent)">${esc(r.intitule||r.nom||'')}</span></td>
       <td>${esc(r.organisme||'')}</td>
@@ -3587,7 +3626,7 @@ function renderNotesTab(d){
     +'<textarea id="dos-note-'+d.id+'"'
     +' style="width:100%;min-height:280px;background:rgba(0,0,0,.15);border:1px solid rgba(0,255,156,.15);border-radius:var(--r-sm);padding:14px 16px;font-family:var(--font);font-size:13px;color:#fff;outline:none;resize:vertical;line-height:1.6;box-sizing:border-box;"'
     +' placeholder="Notes de suivi, contexte client, points r\u00e9glementaires..."'
-    +' oninput="_noteAutosave(\''+d.id+'\',this.value)">' +esc(note)+ '</textarea>'
+    +' oninput="_noteAutosave(_ciDossierId,this.value)">' +esc(note)+ '</textarea>'
     +'<div id="dos-note-saved-'+d.id+'" style="font-size:10px;color:var(--t40);margin-top:6px;text-align:right;opacity:0;transition:opacity .3s;">\u2713 Sauvegard\u00e9</div>'
     +'<div style="margin-top:14px;padding:10px 14px;background:rgba(24,0,255,.06);border-radius:var(--r-sm);border:1px solid rgba(24,0,255,.15);">'
     +'<div style="font-size:9.5px;font-weight:800;text-transform:uppercase;letter-spacing:.12em;color:#8899FF;margin-bottom:6px;">Aide \u00e0 la r\u00e9daction</div>'
@@ -3606,15 +3645,16 @@ const _noteAutosave=(()=>{
     _t[did]=setTimeout(()=>{
       const d=STORE.dossiers[did];if(!d)return;
       d.note_interne=val;STORE._saveLocal();
+      const _nel=document.getElementById('dos-note-saved-'+did);
       if(STORE.token&&notionAPI.proxyUrl&&d.notionPageId){
-        const cid=STORE.clients[d.clientId]?.notionPageId||null;
-        notionAPI.updatePage(d.notionPageId,notionAPI.dossierProps(d,cid)).then(()=>{
-          const el=document.getElementById('dos-note-saved-'+did);
-          if(el){el.textContent='\u2713 Sync Notion';el.style.opacity='1';setTimeout(()=>el.style.opacity='0',2000);}
+        syncIndicator.run('note_'+did,()=>{
+          const cid2=STORE.clients[d.clientId]?.notionPageId||null;
+          return notionAPI.updatePage(d.notionPageId,notionAPI.dossierProps(d,cid2));
+        }).then(()=>{
+          if(_nel){_nel.textContent='\u2713 Sync Notion';_nel.style.opacity='1';setTimeout(()=>_nel.style.opacity='0',2000);}
         });
       } else {
-        const el=document.getElementById('dos-note-saved-'+did);
-        if(el){el.textContent='\u2713 Local';el.style.opacity='1';setTimeout(()=>el.style.opacity='0',2000);}
+        if(_nel){_nel.textContent='\u2713 Local';_nel.style.opacity='1';setTimeout(()=>_nel.style.opacity='0',2000);}
       }
     },800);
   };
@@ -5196,13 +5236,21 @@ function renderOverview(){
   const objPDJ=(ck.obj_pdj||[]).filter(o=>!o.done).slice(0,4);
   const equipe=ck.equipe||[];
 
+  // KPIs CDC v4
+  const _factures=STORE.notion.factures||[];
+  const _yr=new Date().getFullYear();
+  const caFact=_factures.filter(f=>f.statut==='Pay\u00e9e'&&f.date&&new Date(f.date+' ').getFullYear()===_yr).reduce((s,f)=>s+(parseFloat(f.montant)||0),0);
+  const _HORS_PIPE2=['Gagn\u00e9','Perdu','Archiv\u00e9'];
+  const pipelinePond=clients.filter(c=>!_HORS_PIPE2.includes(c.statut_commercial||'')).reduce((s,c)=>s+(parseFloat(c.probabilite||0)/100)*(parseFloat(c.montant||0)),0);
+  const lvUrgents=lv.filter(l=>l.statut!=='Termin\u00e9'&&l.statut!=='Annul\u00e9'&&(l.priorite==='Haute'||(l.deadline&&new Date(l.deadline+' ')<new Date(Date.now()+7*86400000)))).length;
+  const nbAlertes=Object.values(STORE.dossiers).reduce((s,d)=>{const a=STORE.calcCI(d).alerts||[];return s+a.filter(x=>x.level==='err').length;},0);
   const kpiBlock='<div style="display:grid;grid-template-columns:repeat(5,1fr);gap:8px;margin-bottom:18px;">'
     +[
-      {l:'Clients',v:clients.length,cls:'kv-b'},
-      {l:'Dossiers CI',v:nbDos,cls:'kv-g'},
+      {l:'CA factur\u00e9 '+_yr,v:EUR(Math.round(caFact)),cls:'kv-g'},
+      {l:'Pipeline pond\u00e9r\u00e9',v:EUR(Math.round(pipelinePond)),cls:'kv-b'},
       {l:'CI Total',v:EUR(Math.round(totalCI)),cls:'kv-g'},
-      {l:'Livrables actifs',v:lv.filter(l=>l.statut!=='Termin\u00e9'&&l.statut!=='Annul\u00e9').length,cls:'kv-p'},
-      {l:'R\u00e9unions \u00e0 venir',v:ru.filter(r=>r.statut!=='R\u00e9alis\u00e9e'&&r.statut!=='Annul\u00e9e').length,cls:'kv-b'},
+      {l:'Livrables urgents',v:lvUrgents,cls:lvUrgents>0?'kv-p':'kv-b'},
+      {l:'Alertes r\u00e9gl.',v:nbAlertes,cls:nbAlertes>0?'kv-p':'kv-b'},
     ].map(({l,v,cls})=>'<div class="kpi-card kpi-glow"><div class="kpi-label">'+l+'</div><div class="kpi-val '+cls+'">'+v+'</div></div>').join('')
   +'</div>';
 
@@ -5245,8 +5293,51 @@ function renderOverview(){
       +'<button onclick="STORE.setLead(\'\')" style="margin-left:auto;padding:3px 11px;border-radius:99px;border:1px solid rgba(255,255,255,.25);background:rgba(0,0,0,.2);color:rgba(255,255,255,.65);font-family:var(--font);font-size:10px;cursor:pointer;">� Vue globale</button>'
       +'</div>';
   })():'';
+  // Bandeau urgences CI
+  const _dosAlertes=Object.values(STORE.dossiers).filter(d=>{
+    if(!d.dispositif)return false;
+    if(_lead&&d.lead&&d.lead!==_lead)return false;
+    return (STORE.calcCI(d).alerts||[]).some(a=>a.level==='err');
+  });
+  const _urgencyBand=_dosAlertes.length
+    ?'<div style="margin-bottom:12px;padding:8px 14px;border-radius:var(--r-sm);background:rgba(249,21,117,.06);border:1px solid rgba(249,21,117,.2);border-left:3px solid var(--pink);display:flex;align-items:center;gap:10px;">'
+    +'<span style="font-size:11px;font-weight:700;color:var(--pink);">\u26a0 '+_dosAlertes.length+' dossier'+(_dosAlertes.length>1?'s':'')+' avec alertes r\u00e9gl. actives</span>'
+    +'<span style="font-size:10px;color:var(--t60);margin-left:4px;">'+_dosAlertes.slice(0,3).map(d=>{const cn=STORE.clients[d.clientId]?.name||'?';const codes=(STORE.calcCI(d).alerts||[]).filter(a=>a.level==='err').map(a=>a.code).join(', ');return esc(cn)+'('+codes+')';}).join(' \u00b7 ')+'</span>'
+    +'<button onclick="nav(\'ci\')" style="margin-left:auto;padding:2px 10px;border-radius:99px;border:1px solid rgba(249,21,117,.3);background:rgba(249,21,117,.1);color:var(--pink);font-family:var(--font);font-size:9.5px;cursor:pointer;font-weight:700;">Voir CI \u2192</button>'
+    +'</div>':'';
+
+  // Graphique CA mensuel + toggle
+  const _caMode=(STORE.cockpit&&STORE.cockpit._caMode)||'emission';
+  const _mois=['Jan','F\u00e9v','Mar','Avr','Mai','Jun','Jul','Ao\u00fb','Sep','Oct','Nov','D\u00e9c'];
+  const _caByMonth=Array(12).fill(0);
+  _factures.forEach(f=>{
+    const _dt=_caMode==='encaissement'?(f.statut==='Pay\u00e9e'?f.date_echeance||f.date:null):f.date;
+    if(!_dt)return;
+    const _dd=new Date(_dt+' ');
+    if(!isNaN(_dd)&&_dd.getFullYear()===_yr)_caByMonth[_dd.getMonth()]+=(parseFloat(f.montant)||0);
+  });
+  const _caMax=Math.max(..._caByMonth,1);
+  const _caTotal=_caByMonth.reduce((s,v)=>s+v,0);
+  const _sBtnE=_caMode==='emission'?'border:1px solid var(--green);background:rgba(0,255,156,.15);color:var(--green);':'border:1px solid rgba(255,255,255,.2);background:transparent;color:var(--t40);';
+  const _sBtnN=_caMode==='encaissement'?'border:1px solid var(--green);background:rgba(0,255,156,.15);color:var(--green);':'border:1px solid rgba(255,255,255,.2);background:transparent;color:var(--t40);';
+  const _caGraph=_caTotal>0
+    ?'<div style="margin-bottom:16px;padding:12px 14px;border-radius:var(--r-sm);background:rgba(0,0,0,.15);border:1px solid rgba(255,255,255,.07);">'
+    +'<div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:10px;">'
+    +'<span style="font-size:9.5px;font-weight:800;text-transform:uppercase;letter-spacing:.15em;color:var(--t40);">CA mensuel '+_yr+'</span>'
+    +'<div style="display:flex;gap:4px;">'
+    +'<button id="ca-btn-em" style="padding:2px 8px;border-radius:99px;font-family:var(--font);font-size:9px;cursor:pointer;'+_sBtnE+'">'+'\u00c9mission</button>'
+    +'<button id="ca-btn-en" style="padding:2px 8px;border-radius:99px;font-family:var(--font);font-size:9px;cursor:pointer;'+_sBtnN+'">Encaissement</button>'
+    +'</div></div>'
+    +'<div style="display:flex;align-items:flex-end;gap:3px;height:54px;">'
+    +_caByMonth.map((v,i)=>'<div style="flex:1;display:flex;flex-direction:column;align-items:center;gap:2px;">'
+        +'<div style="width:100%;background:'+(v>0?'rgba(0,255,156,.7)':'rgba(255,255,255,.1)')+';border-radius:2px 2px 0 0;height:'+(v>0?Math.max(4,Math.round(v/_caMax*50)):2)+'px;" title="'+_mois[i]+': '+EUR(Math.round(v))+'"></div>'
+        +'<div style="font-size:7px;color:var(--t40);">'+_mois[i].substring(0,1)+'</div>'
+      +'</div>').join('')
+    +'</div></div>'
+    :'';
+
   document.getElementById('panel-overview').innerHTML='<div class="ov-wrap" style="overflow-y:auto;height:100%;"><div style="padding:20px 24px;">'
-    +_leadBanner+kpiBlock
+    +_leadBanner+kpiBlock+_urgencyBand+_caGraph
     +'<div style="display:grid;grid-template-columns:1fr 300px;gap:20px;">'
       +'<div>'
         +(isEmpty?'<div style="text-align:center;padding:30px;color:var(--t40);"><div style="font-size:28px;margin-bottom:8px;">\u2713</div><div style="font-size:14px;font-weight:700;">Tout est \u00e0 jour</div><div style="font-size:12px;margin-top:4px;">Aucun \u00e9l\u00e9ment en retard ou \u00e0 traiter cette semaine</div></div>':'')
@@ -6266,14 +6357,15 @@ const PIL = {
   },
 
   deleteItem(col,idx){
-    if(!confirm('Supprimer ?'))return;
-    const items=STORE.notion[col]||[];
-    const item=items[idx];
-    if(item?.id&&STORE.token)notionAPI.archivePage?.(item.id).catch(()=>{});
-    STORE.notion[col]=items.filter((_,i)=>i!==idx);
-    try{localStorage.setItem('pdj_notion_'+col,JSON.stringify(STORE.notion[col]));}catch(e){}
-    if(this.state.editItem?.idx===idx)this.state.editItem=null;
-    this.render();toast('Supprimé','warn');
+    _confirmBox('Supprimer ?',()=>{
+      const items=STORE.notion[col]||[];
+      const item=items[idx];
+      if(item?.id&&STORE.token)notionAPI.archivePage?.(item.id).catch(()=>{});
+      STORE.notion[col]=items.filter((_,i)=>i!==idx);
+      try{localStorage.setItem('pdj_notion_'+col,JSON.stringify(STORE.notion[col]));}catch(e){}
+      if(this.state.editItem?.idx===idx)this.state.editItem=null;
+      this.render();toast('Supprimé','warn');
+    });
   },
   _fieldsFor(col){
     if(col==='livrables')return this._livFields();
@@ -7085,8 +7177,9 @@ const PIL = {
         <div style="align-self:flex-end;display:flex;gap:6px;"><button class="btn btn-green btn-sm" onclick="${saveFn}">${saveLabel}</button><button class="btn btn-ghost btn-sm" onclick="${cancelFn}">✕</button></div>
       </div>`;
 
-    // Pipeline pondéré
-    const pond = clients.reduce((s,c)=>{
+    // Pipeline pondéré — exclut Gagné/Perdu/Archivé (CDC v4)
+    const _HORS_PIPE=['Gagné','Perdu','Archivé'];
+    const pond = clients.filter(c=>!_HORS_PIPE.includes(c.statut_commercial||'')).reduce((s,c)=>{
       const prob = parseFloat(c.probabilite||0)/100;
       const mont = parseFloat(c.montant||0);
       return s + prob*mont;
@@ -7879,6 +7972,14 @@ nav('overview');
 _updateLeadBadge(STORE.currentLead||'');
 if(STORE.currentLead)setTimeout(()=>PIL.setLead(STORE.currentLead),200);
 console.log('PDJ Console SGA v3.1 — Point du Jour Conseil');
+
+  // Bind boutons CA
+  setTimeout(()=>{
+    const _be=document.getElementById('ca-btn-em');
+    const _bn=document.getElementById('ca-btn-en');
+    if(_be)_be.onclick=()=>_setCaMode('emission');
+    if(_bn)_bn.onclick=()=>_setCaMode('encaissement');
+  },0);
 
 </script>
 </body>
