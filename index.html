@@ -1184,16 +1184,14 @@ const notionAPI = {
       'Dur\u00e9e amortissement (mois)':P.number(row.duree||0),
       'Amort. sur p\u00e9riode \u20ac':P.number(row.amort_periode||0),
       'Projet R&D':P.text(row.projet||''),
-      '% Affectation CI':P.number(row.taux_affectation!=null?row.taux_affectation:100),
-      'D\u00e9penses valorisables \u20ac':P.number(row.depenses_valorisables||0),...rel
-    };
+      '% Affectation CI':P.number(row.taux_affectation!=null?row.taux_affectation:100),...rel
+    }; // Depenses valorisables = FORMULA Notion - lecture seule
     if (field === 'prestations') {
       const typeVal2=(row.public_prive||'Priv\u00e9').includes('Public')?'Public agr\u00e9\u00e9':'Priv\u00e9';
       return {
         'Sous-traitant':P.title(row.sous_traitant||row.nom||''),'SIREN':P.text(row.siren||''),
         'Type':P.select(typeVal2),'Projet R&D':P.text(row.projet||''),
         'Montant factur\u00e9 \u20ac':P.number(row.montant||row.montant_facture||0),
-        'D\u00e9penses valorisables \u20ac':P.number(row.depenses_valorisables||0),
         'Agr\u00e9ment CIR':P.checkbox(row.agree_cir||false),...rel
       };
     }
@@ -1963,11 +1961,25 @@ const STORE = {
       ff = tp*0.43;
     }
 
-    const ta  = am.reduce((s,a)=>s+(parseFloat(a.depenses_valorisables)||0),0);
+    // Fallback amortissements: si depenses_valorisables=0 mais amort_periode>0, recalculer
+    const _getAmortVal=(a)=>{
+      const _v=parseFloat(a.depenses_valorisables||0);
+      if(_v>0) return _v;
+      const _ap=parseFloat(a.amort_periode||0);
+      const _pct=parseFloat(a.taux_affectation!=null?a.taux_affectation:100);
+      return _ap>0?Math.round(_ap*_pct/100*100)/100:0;
+    };
+    const ta  = am.reduce((s,a)=>s+_getAmortVal(a),0);
     const inn = tp+ta+ff;
 
     // ── Prestations (plafond 3× base interne) ────────────────
-    const tpr = pr.reduce((s,p)=>s+(parseFloat(p.depenses_valorisables)||0),0);
+    // Fallback prestations: si depenses_valorisables=0 mais montant_facture>0, utiliser montant
+    const _getPrestaVal=(p)=>{
+      const _v=parseFloat(p.depenses_valorisables||0);
+      if(_v>0) return _v;
+      return parseFloat(p.montant_facture||p.montant||0);
+    };
+    const tpr = pr.reduce((s,p)=>s+_getPrestaVal(p),0);
     const pc  = Math.min(tpr, inn*3);
 
     // ── Subventions déductibles ───────────────────────────────
@@ -5265,9 +5277,11 @@ function renderOverview(){
   // KPIs CDC v4
   const _factures=STORE.notion.factures||[];
   const _yr=new Date().getFullYear();
-  const caFact=_factures.filter(f=>f.statut==='Pay\u00e9e'&&f.date&&new Date(f.date+' ').getFullYear()===_yr).reduce((s,f)=>s+(parseFloat(f.montant)||0),0);
-  const _HORS_PIPE2=['Gagn\u00e9','Perdu','Archiv\u00e9'];
-  const pipelinePond=clients.filter(c=>!_HORS_PIPE2.includes(c.statut_commercial||'')).reduce((s,c)=>s+(parseFloat(c.probabilite||0)/100)*(parseFloat(c.montant||0)),0);
+  // CA facture = Envoyee + Payee + En retard (toutes annees)
+  const _STATUTS_CA=['Envoy\u00e9e','Pay\u00e9e','En retard'];
+  const caFact=_factures.filter(f=>_STATUTS_CA.includes(f.statut)).reduce((s,f)=>s+(parseFloat(f.montant)||0),0);
+  // Pipeline = somme de TOUTES les factures quel que soit le statut
+  const pipelinePond=_factures.reduce((s,f)=>s+(parseFloat(f.montant)||0),0);
   const lvUrgents=lv.filter(l=>l.statut!=='Termin\u00e9'&&l.statut!=='Annul\u00e9'&&(l.priorite==='Haute'||(l.deadline&&new Date(l.deadline+' ')<new Date(Date.now()+7*86400000)))).length;
   const nbAlertes=Object.values(STORE.dossiers).reduce((s,d)=>{const a=STORE.calcCI(d).alerts||[];return s+a.filter(x=>x.level==='err').length;},0);
   const kpiBlock='<div style="display:grid;grid-template-columns:repeat(5,1fr);gap:8px;margin-bottom:18px;">'
