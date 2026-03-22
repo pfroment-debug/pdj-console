@@ -1919,9 +1919,27 @@ const STORE = {
     // P2 = 15/02 → 31/12 (320 j / 365 j = 87,7%)
     // Frais de fonctionnement : P1 = 43%, P2 = 40%
     // (Pour les autres années : taux uniforme 43%, sauf CII ≥ 2023 = 0%)
+    // Fallback taux: si depenses_valorisables=0 dans Notion (rollup Chercheur absent)
+    // recalculer depuis d.personnel par nom - couvre les affectations historiques
+    const _pers=d.personnel||[];
+    const _getTaux=(a)=>{
+      if(parseFloat(a.taux||0)>0) return parseFloat(a.taux);
+      const _nom=(a.nom||'').split('—')[0].trim().toLowerCase();
+      const _p=_pers.find(p=>p.nom&&p.nom.toLowerCase()===_nom);
+      if(!_p) return 0;
+      const _base=(parseFloat(_p.salaire_brut||0))+(parseFloat(_p.charges_sociales||0));
+      const _j=parseFloat(_p.tps_travailles||218);
+      return _j>0?Math.round(_base/_j*100)/100:0;
+    };
+    const _getDepVal=(a)=>{
+      const _v=parseFloat(a.depenses_valorisables||0);
+      if(_v>0) return _v;
+      const _t=_getTaux(a);
+      return _t>0?Math.round(_t*parseFloat(a.tps_eligibles||0)*100)/100:0;
+    };
     let tp_p1=0, tp_p2=0, tp_sans_periode=0;
     aff.forEach(a=>{
-      const val=parseFloat(a.depenses_valorisables||0);
+      const val=_getDepVal(a);
       if(!annee2025){ tp_sans_periode+=val; return; }
       const p=(a.periode_2025||'').trim();
       if(p.startsWith('P1'))      tp_p1+=val;
