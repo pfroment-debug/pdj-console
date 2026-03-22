@@ -1165,10 +1165,15 @@ const notionAPI = {
     }
     if (field === 'affectations') {
       const titre2=(row.nom||'')+(row.projet?' \u2014 '+row.projet:'');
+      const _did3=dossierNotionId?Object.values(STORE.dossiers).find(d=>d.notionPageId===dossierNotionId||d.id===dossierNotionId)?.id:null;
+      const _pers3=_did3?STORE.dossiers[_did3]?.personnel||[]:[];
+      const _nom3=(row.nom||'').split(' —')[0].trim().toLowerCase();
+      const _ch3=_pers3.find(p=>p.nom&&p.nom.toLowerCase()===_nom3);
+      const _chRel=_ch3?.notionPageId?{'Chercheur':P.relation([_ch3.notionPageId])}:{};
       const props2={
         'Nom':P.title(titre2),'Projet R&D':P.text(row.projet||''),
         'Temps sur projet (j)':P.number(row.tps_passes||0),
-        'Temps valorisable (j)':P.number(row.tps_eligibles||0),...rel
+        'Temps valorisable (j)':P.number(row.tps_eligibles||0),..._chRel,...rel
       };
       if(row.periode_2025) props2['P\u00e9riode 2025']=P.select(row.periode_2025);
       return props2;
@@ -1337,8 +1342,8 @@ const notionAPI = {
       url: p.url,
       nom:         this._extractProp(p, 'Nom') || this._extractProp(p, 'Name') || '',
       statut:      this._extractProp(p, 'Statut') || this._extractProp(p, 'Status') || '',
-      probabilite: this._extractProp(p, 'Probabilité') || this._extractProp(p, 'Probability') || 0,
-      montant:     this._extractProp(p, 'Montant') || this._extractProp(p, 'Amount') || 0,
+      probabilite: this._extractProp(p, 'Probabilité %') || this._extractProp(p, 'Probabilité') || this._extractProp(p, 'Probability') || 0,
+      montant:     this._extractProp(p, 'Montant estimé €') || this._extractProp(p, 'Montant') || this._extractProp(p, 'Amount') || 0,
     }));
 
     await loadCol('pil_factures', 'factures', p => ({
@@ -1378,6 +1383,9 @@ const notionAPI = {
     if (prop.type === 'people') return prop.people?.map(u=>u.id) || [];
     if (prop.type === 'relation') return prop.relation?.map(r=>r.id) || [];
     if (prop.type === 'formula') return prop.formula?.number ?? prop.formula?.string ?? null;
+    if (prop.type === 'rollup') return prop.rollup?.number ?? prop.rollup?.date?.start ?? null;
+    if (prop.type === 'multi_select') return prop.multi_select?.map(o=>o.name)||[];
+    if (prop.type === 'phone_number') return prop.phone_number||null;
     return null;
   },
 
