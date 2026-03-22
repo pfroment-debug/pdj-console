@@ -5367,6 +5367,19 @@ function renderOverview(){
       +'<button onclick="STORE.setLead(\'\')" style="margin-left:auto;padding:3px 11px;border-radius:99px;border:1px solid rgba(255,255,255,.25);background:rgba(0,0,0,.2);color:rgba(255,255,255,.65);font-family:var(--font);font-size:10px;cursor:pointer;">� Vue globale</button>'
       +'</div>';
   })():'';
+    // Variables CA mensuel
+  const _caMode2=(STORE.cockpit&&STORE.cockpit._caMode)||'emission';
+  const _mois2=['Jan','F\u00e9v','Mar','Avr','Mai','Jun','Jul','Ao\u00fbt','Sep','Oct','Nov','D\u00e9c'];
+  const _caByMonth2=Array(12).fill(0);
+  (STORE.notion.factures||[]).forEach(f=>{
+    const _dt2=_caMode2==='encaissement'?(f.statut==='Pay\u00e9e'?f.date_echeance||f.date:null):f.date;
+    if(!_dt2)return;const _dd2=new Date(_dt2+' ');
+    if(!isNaN(_dd2)&&_dd2.getFullYear()===_yr)_caByMonth2[_dd2.getMonth()]+=(parseFloat(f.montant)||0);
+  });
+  const _caMax2=Math.max(..._caByMonth2,1);
+  const _caTotal2=_caByMonth2.reduce((s,v)=>s+v,0);
+  const _sBtnE2=_caMode2==='emission'?'border:1px solid var(--green);background:rgba(0,255,156,.15);color:var(--green);':'border:1px solid rgba(255,255,255,.2);background:transparent;color:var(--t40);';
+  const _sBtnN2=_caMode2==='encaissement'?'border:1px solid var(--green);background:rgba(0,255,156,.15);color:var(--green);':'border:1px solid rgba(255,255,255,.2);background:transparent;color:var(--t40);';
 
   // Overview M1+M3 redesign
 
@@ -5433,19 +5446,19 @@ function renderOverview(){
   +'</div>';
 
   // Panel CA redesign
-  const _caPanel=_caTotal>0?'<div class="ov-panel">'
+  const _caPanel=_caTotal2>0?'<div class="ov-panel">'
     +'<div class="ov-ph">CA mensuel '+_yr+' <span class="sub">'
-      +'<button id="ca-btn-em" style="padding:1px 7px;border-radius:99px;font-family:var(--font);font-size:8px;cursor:pointer;'+_sBtnE+'">\u00c9mission</button>'
-      +' <button id="ca-btn-en" style="padding:1px 7px;border-radius:99px;font-family:var(--font);font-size:8px;cursor:pointer;'+_sBtnN+'">Encaissement</button>'
+      +'<button id="ca-btn-em" style="padding:1px 7px;border-radius:99px;font-family:var(--font);font-size:8px;cursor:pointer;'+_sBtnE2+'">\u00c9mission</button>'
+      +' <button id="ca-btn-en" style="padding:1px 7px;border-radius:99px;font-family:var(--font);font-size:8px;cursor:pointer;'+_sBtnN2+'">Encaissement</button>'
     +'</span></div>'
     +'<div style="display:flex;align-items:flex-end;gap:4px;height:52px;margin-bottom:5px;">'
-    +_caByMonth.map((v,i)=>{
-      const isMx=v===_caMax&&v>0;
+    +_caByMonth2.map((v,i)=>{
+      const isMx=v===_caMax2&&v>0;
       const bg=isMx?'rgba(55,138,221,.5)':'rgba(0,204,122,.3)';
       return '<div style="flex:1;display:flex;flex-direction:column;align-items:center;gap:2px;">'
         +(v>0?'<div style="font-size:6.5px;color:rgba(255,255,255,.35);font-weight:600;">'+Math.round(v/1000)+'k</div>':'<div style="font-size:6.5px;color:rgba(255,255,255,.12);">\u2014</div>')
-        +'<div style="width:100%;border-radius:2px 2px 0 0;background:'+(v>0?bg:'rgba(255,255,255,.06)')+';height:'+(v>0?Math.max(3,Math.round(v/_caMax*40)):3)+'px;" title="'+_mois[i]+': '+EUR(Math.round(v))+'"></div>'
-        +'<div style="font-size:6.5px;color:rgba(255,255,255,.18);">'+_mois[i].substring(0,1)+'</div>'
+        +'<div style="width:100%;border-radius:2px 2px 0 0;background:'+(v>0?bg:'rgba(255,255,255,.06)')+';height:'+(v>0?Math.max(3,Math.round(v/_caMax2*40)):3)+'px;" title="'+_mois2[i]+': '+EUR(Math.round(v))+'"></div>'
+        +'<div style="font-size:6.5px;color:rgba(255,255,255,.18);">'+_mois2[i].substring(0,1)+'</div>'
         +'</div>';
     }).join('')
     +'</div>'
@@ -5549,6 +5562,7 @@ function renderOverview(){
       +'</div>'
     +'</div>'
   +'</div>';
+
 
 }
 
@@ -8201,6 +8215,13 @@ function toggleLeadMenu(){
     if(!menu.contains(e.target)&&e.target.id!=='nav-lead-av'){menu.remove();document.removeEventListener('pointerdown',_cl,true);}
   },{capture:true}),80);
 }
+function _setCaMode(mode){
+  if(!STORE.cockpit)STORE.cockpit={};
+  STORE.cockpit._caMode=mode;
+  try{localStorage.setItem('pdj_cockpit',JSON.stringify(STORE.cockpit));}catch(e){}
+  if(_curPanel==='overview')renderOverview();
+}
+
 // Initial render
 nav('overview');
 _updateLeadBadge(STORE.currentLead||'');
@@ -8214,6 +8235,7 @@ console.log('PDJ Console SGA v3.1 — Point du Jour Conseil');
     if(_be)_be.onclick=()=>_setCaMode('emission');
     if(_bn)_bn.onclick=()=>_setCaMode('encaissement');
   },0);
+
 
 </script>
 </body>
