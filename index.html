@@ -3187,7 +3187,7 @@ function renderPersTab(d){
   // Formulaire standard (non-CIR 2025)
   const form=addFormHtml('pers',[
     ...periodeField,
-    {id:'nom',label:'Nom',ph:'DUPONT Jean',w:'170px',dl:'pers-dl-noms',oninput:`persAutofill('${d.id}')`},
+    {id:'nom',label:'Nom',ph:'DUPONT Jean',w:'170px',dl:'pers-dl-noms',oninput:`persAutofill(_ciDossierId)`},
     {id:'diplome',label:'Diplôme',ph:'Thèse/Master/BTS',w:'130px'},
     {id:'contrat',label:'Contrat',type:'select',opts:[{v:'CDI - Tps plein',l:'CDI'},{v:'CDD',l:'CDD'},{v:'Mise à Disposition',l:'Mise à dispo.'},{v:'Apprentissage',l:'Apprentissage'},{v:'Allocation de gérance',l:'Allocation de gérance'}]},
     {id:'sal',label:'Salaire brut €',type:'number',ph:'45000',w:'90px'},{id:'charges',label:'Ch. patronales oblig. €',type:'number',ph:'22000',w:'115px'},
@@ -3200,7 +3200,7 @@ function renderPersTab(d){
   <div id='pers-form-2025' style='padding:12px 0;'>
     <div style='display:grid;grid-template-columns:1fr 1fr;gap:8px;margin-bottom:10px;'>
       <div><label>Nom du salarié</label>
-        <input id='af-p-nom' class='minput' list='pers-dl-noms' placeholder='DUPONT Jean' style='width:100%;' oninput='persCIR2025Autofill("${d.id}")'></div>
+        <input id='af-p-nom' class='minput' list='pers-dl-noms' placeholder='DUPONT Jean' style='width:100%;' oninput='persCIR2025Autofill(_ciDossierId)'></div>
       <div><label>Diplôme</label>
         <input id='af-p-diplome' class='minput' placeholder='Thèse / Master / BTS' style='width:100%;'></div>
       <div><label>Contrat</label>
@@ -3250,7 +3250,7 @@ function renderPersTab(d){
       Sal.P1 + Sal.P2 = Salaire annuel — Taux = (Sal + Ch. oblig.) ÷ Jours de la période — Crée 2 lignes�: <strong style='color:#8899FF;'>NOM — P1</strong> + <strong style='color:var(--green);'>NOM — P2</strong>
     </div>
     <div style='display:flex;gap:8px;margin-top:10px;'>
-      <button id='btn-add-pers-2025' class='btn btn-green btn-sm' style='flex:1;' onclick='pers_add_2025("${d.id}")'>Créer NOM—P1 + NOM—P2</button>
+      <button id='btn-add-pers-2025' class='btn btn-green btn-sm' style='flex:1;' onclick='pers_add_2025(_ciDossierId)'>Créer NOM—P1 + NOM—P2</button>
     </div>
   </div>` : '';
   const formP1P2 = anneeIsPeriode ? `
@@ -3278,7 +3278,7 @@ function renderPersTab(d){
     </div>
     <div style='font-size:10px;color:var(--t40);margin-top:4px;'>Sal.P1 + Sal.P2 = Salaire annuel — Taux P1 = (Sal+Ch P1) ÷ Jours P1 — Taux P2 = (Sal+Ch P2) ÷ Jours P2</div>
   ` : '';
-  if(!rows.length){const noteR=`<div class="alert alert-info" style="margin:10px 14px 0;font-size:11px;"><span>⚖</span><span><strong style="color:var(--green)">Art. 244 quater B</strong> — Cotisations obligatoires uniquement (URSSAF, retraite légale). Les charges volontaires (intéressement, mutuelle sur-oblig…) sont non déductibles.</span></div>`;return `<div class="twrap" style="margin:14px 24px;"><div class="thead2"><span class="ttitle">Personnel R&D</span>${addBtn('Personnel',"document.getElementById('add-form-pers').style.display='flex';SS.registerForDossier('${d.id}')",'pers')}</div>${isCIR2025?formCIR2025:form}${noteR}${emptyState('Aucun personnel déclaré.')}</div>`;}
+  if(!rows.length){const noteR=`<div class="alert alert-info" style="margin:10px 14px 0;font-size:11px;"><span>⚖</span><span><strong style="color:var(--green)">Art. 244 quater B</strong> — Cotisations obligatoires uniquement (URSSAF, retraite légale). Les charges volontaires (intéressement, mutuelle sur-oblig…) sont non déductibles.</span></div>`;return `<div class="twrap" style="margin:14px 24px;"><div class="thead2"><span class="ttitle">Personnel R&D</span>${addBtn('Personnel',"document.getElementById('add-form-pers').style.display='flex';SS.registerForDossier(_ciDossierId)",'pers')}</div>${isCIR2025?formCIR2025:form}${noteR}${emptyState('Aucun personnel déclaré.')}</div>`;}
   const noteReglementaire=`<div class="alert alert-info" style="margin:10px 14px 0;font-size:11px;">
     <span>⚖</span>
     <span><strong style="color:var(--green)">Art. 244 quater B, II-a CGI</strong> — Les charges patronales éligibles sont exclusivement les <strong>cotisations sociales obligatoires</strong> (URSSAF, retraite légale, prévoyance légale). Les charges volontaires (intéressement, participation, tickets restaurant, mutuelle sur-obligatoire, PEE…) sont <strong style="color:var(--pink)">non déductibles</strong> et doivent être isolées dans la colonne Ch. vol.</span>
@@ -3343,7 +3343,7 @@ function renderAffTab(d){
         <label>Chercheur / Responsable</label>
         <input id="af-nom" class="" type="text" placeholder="DUPONT Jean" style="width:160px;background:var(--t08);border:1px solid rgba(0,255,156,.2);border-radius:4px;padding:5px 8px;font-family:var(--font);font-size:12px;color:#fff;outline:none;"
           list="aff-dl-noms-courant" autocomplete="off"
-          oninput="affAutofillTaux('${d.id}')" onfocus="SS.registerAff('${d.id}')">
+          oninput="affAutofillTaux(_ciDossierId)" onfocus="SS.registerAff(_ciDossierId)">
       </div>
       <div>
         <label>Projet ${isINNO?'INNO':'R&D'}</label>
@@ -3353,20 +3353,20 @@ function renderAffTab(d){
         <label>Taux journalier €/j</label>
         <div style="position:relative;">
           <input id="af-taux" type="number" placeholder="0" style="width:90px;background:rgba(0,255,156,.06);border:1px solid rgba(0,255,156,.25);border-radius:4px;padding:5px 8px;font-family:var(--font);font-size:12px;font-weight:700;color:var(--green);outline:none;"
-            oninput="affCalcDep('${d.id}')">
+            oninput="affCalcDep(_ciDossierId)">
           <span id="af-taux-src" style="position:absolute;right:4px;top:50%;transform:translateY(-50%);font-size:8px;color:var(--green);opacity:.6;pointer-events:none;"></span>
         </div>
       </div>
       <div>
         <label>Tps sur projet (j)</label>
         <input id="af-tps-proj" type="number" placeholder="0" style="width:75px;background:var(--t08);border:1px solid rgba(0,255,156,.2);border-radius:4px;padding:5px 8px;font-family:var(--font);font-size:12px;color:#fff;outline:none;"
-          oninput="affCalcDep('${d.id}')">
+          oninput="affCalcDep(_ciDossierId)">
       </div>
       <div>
         <label>Tps valorisable (j)</label>
         <div style="position:relative;">
           <input id="af-tps-val" type="number" placeholder="0" style="width:75px;background:rgba(0,255,156,.06);border:1px solid rgba(0,255,156,.25);border-radius:4px;padding:5px 8px;font-family:var(--font);font-size:12px;font-weight:700;color:var(--green);outline:none;"
-            oninput="affCalcDep('${d.id}')">
+            oninput="affCalcDep(_ciDossierId)">
         </div>
       </div>
       <div>
@@ -3378,7 +3378,7 @@ function renderAffTab(d){
         <input id="af-dep" type="number" placeholder="0" readonly style="width:105px;background:rgba(0,255,156,.1);border:1px solid rgba(0,255,156,.3);border-radius:4px;padding:5px 8px;font-family:var(--font);font-size:13px;font-weight:900;color:var(--green);outline:none;">
       </div>
       <div style="align-self:flex-end;display:flex;gap:6px;">
-        <button class="btn btn-green btn-sm" onclick="aff_add('${d.id}')">Ajouter</button>
+        <button class="btn btn-green btn-sm" onclick="aff_add(_ciDossierId)">Ajouter</button>
         <button class="btn btn-ghost btn-sm" onclick="document.getElementById('add-form-aff').style.display='none'">✕</button>
       </div>
     </div>
@@ -3392,7 +3392,7 @@ function renderAffTab(d){
       <div style="display:flex;gap:8px;flex-wrap:wrap;align-items:flex-end;">
         <div><label>Période</label>
           <select id="af-aff-periode2025" style="background:var(--t08);border:1px solid rgba(0,255,156,.2);border-radius:4px;padding:5px 8px;font-family:var(--font);font-size:12px;color:#fff;outline:none;"
-            onchange="affOnPeriodeChange('${d.id}')">
+            onchange="affOnPeriodeChange(_ciDossierId)">
             <option value="">-- Non spécifié --</option>
             <option value="P1 — Jan→14 fév. (FF 43%)">P1 — Jan → 14 fév. (FF 43%)</option>
             <option value="P2 — 15 fév.→Déc. (FF 40%)">P2 — 15 fév. → Déc. (FF 40%)</option>
@@ -3416,7 +3416,7 @@ function renderAffTab(d){
 
   // ── Tableau récap ─────────────────────────────────────────
   if(!rows.length)return `<div class="twrap" style="margin:14px 24px;">
-    <div class="thead2"><span class="ttitle">${titre}</span>${addBtn(isINNO?'Affectation INNO':'Affectation R&D',"document.getElementById('add-form-aff').style.display='flex';SS.registerAff('${d.id}');SS.registerForDossier('${d.id}')",'aff')}</div>
+    <div class="thead2"><span class="ttitle">${titre}</span>${addBtn(isINNO?'Affectation INNO':'Affectation R&D',"document.getElementById('add-form-aff').style.display='flex';SS.registerAff(_ciDossierId);SS.registerForDossier(_ciDossierId)",'aff')}</div>
     ${form}${emptyState('Aucune affectation déclarée.')}
   </div>`;
 
@@ -3430,7 +3430,7 @@ function renderAffTab(d){
         <span class="tcount">${rows.length}</span>
         <span style="font-size:10px;color:var(--t40);">Engagées : <strong style="color:#fff;">${EUR(totEng)}</strong></span>
         <span style="font-size:10px;color:var(--green);">Valorisables : <strong>${EUR(totVal)}</strong></span>
-        ${addBtn(isINNO?'INNO':'R&D',"document.getElementById('add-form-aff').style.display='flex';SS.registerAff('${d.id}')",'aff')}
+        ${addBtn(isINNO?'INNO':'R&D',"document.getElementById('add-form-aff').style.display='flex';SS.registerAff(_ciDossierId)",'aff')}
       </div>
     </div>
     ${form}
@@ -3475,12 +3475,12 @@ function renderAmortTab(d){
     document.getElementById('add-form-amort').style.display='flex';
   };
   const form=addFormHtml('amort',[
-    {id:'lib',label:'Dénomination',ph:'Serveur CMS1',w:'150px',dl:'amort-dl-lib',onchange:`amortAutofill('${d.id}')`},
+    {id:'lib',label:'Dénomination',ph:'Serveur CMS1',w:'150px',dl:'amort-dl-lib',onchange:`amortAutofill(_ciDossierId)`},
     {id:'proj',label:'Projet',ph:'Projet R&D',w:'110px',dl:'amort-dl-proj'},
     {id:'cout',label:'Coût total €',type:'number',ph:'65000',w:'80px'},{id:'dur',label:'Durée mois',type:'number',ph:'36',w:'60px'},
     {id:'amp',label:'Amort. période €',type:'number',ph:'21860',w:'90px'},{id:'pct',label:'% CI',type:'number',ph:'100',w:'55px'},
   ]);
-  if(!rows.length)return `<div class="twrap" style="margin:14px 24px;"><div class="thead2"><span class="ttitle">Amortissements R&D</span>${addBtn('Amortissement',"document.getElementById('add-form-amort').style.display='flex';SS.registerForDossier('${d.id}')",'amort')}</div>${form}${emptyState('Aucun amortissement.')}</div>`;
+  if(!rows.length)return `<div class="twrap" style="margin:14px 24px;"><div class="thead2"><span class="ttitle">Amortissements R&D</span>${addBtn('Amortissement',"document.getElementById('add-form-amort').style.display='flex';SS.registerForDossier(_ciDossierId)",'amort')}</div>${form}${emptyState('Aucun amortissement.')}</div>`;
   return `<div class="twrap" style="margin:14px 24px;">
     <div class="thead2"><span class="ttitle">Amortissements R&D</span><div style="display:flex;gap:8px;"><span class="tcount">${rows.length}</span>${addBtn('Amortissement',"document.getElementById('add-form-amort').style.display='flex'",'amort')}</div></div>
     ${form}
@@ -3512,7 +3512,7 @@ function renderPrestaTab(d){
     document.getElementById('add-form-presta').style.display='flex';
   };
   const form=addFormHtml('presta',[
-    {id:'nom',label:'Sous-traitant',ph:'Lab CNRS',w:'150px',dl:'presta-dl-st',onchange:`prestaAutofill('${d.id}')`},
+    {id:'nom',label:'Sous-traitant',ph:'Lab CNRS',w:'150px',dl:'presta-dl-st',onchange:`prestaAutofill(_ciDossierId)`},
     {id:'siren',label:'SIREN',ph:'804104446',w:'90px'},
     {id:'pp',label:'Type',type:'select',opts:[{v:'Privé',l:'Privé'},{v:'Public',l:'Public agréé'}]},
     {id:'proj',label:'Projet',ph:'ARIA 2024',w:'110px',dl:'presta-dl-proj'},
@@ -3520,7 +3520,7 @@ function renderPrestaTab(d){
     {id:'dep',label:'Dép. valoris. €',type:'number',ph:'0',w:'90px'},
   ]);
   const plafInfo=rows.length>0&&d.affectations?.length>0?'<div style="font-size:10.5px;color:var(--t40);padding:6px 14px;">Plafond légal 3× base interne (Art. 244 quater B, II-d)</div>':'';
-  if(!rows.length)return `<div class="twrap" style="margin:14px 24px;"><div class="thead2"><span class="ttitle">Prestations Ext.</span>${addBtn('Prestation',"document.getElementById('add-form-presta').style.display='flex';SS.registerForDossier('${d.id}')",'presta')}</div>${form}${emptyState('Aucune prestation externe.')}</div>`;
+  if(!rows.length)return `<div class="twrap" style="margin:14px 24px;"><div class="thead2"><span class="ttitle">Prestations Ext.</span>${addBtn('Prestation',"document.getElementById('add-form-presta').style.display='flex';SS.registerForDossier(_ciDossierId)",'presta')}</div>${form}${emptyState('Aucune prestation externe.')}</div>`;
   return `<div class="twrap" style="margin:14px 24px;">
     <div class="thead2"><span class="ttitle">Prestations Extérieures</span><div style="display:flex;gap:8px;"><span class="tcount">${rows.length}</span>${addBtn('Prestation',"document.getElementById('add-form-presta').style.display='flex'",'presta')}</div></div>
     ${form}${plafInfo}
@@ -3557,7 +3557,7 @@ function renderSubvTab(d){
     {id:'proj',label:'Projet',ph:'Projet R&D',w:'110px',dl:'subv-dl-proj'},
     {id:'aide',label:'Aide déductible €',type:'number',ph:'0',w:'100px'},
   ]);
-  if(!rows.length)return `<div class="twrap" style="margin:14px 24px;"><div class="thead2"><span class="ttitle">Subventions & Aides</span>${addBtn('Subvention',"document.getElementById('add-form-subv').style.display='flex';SS.registerForDossier('${d.id}')",'subv')}</div>${form}<div style="padding:6px 14px;font-size:10.5px;color:var(--t40);">Les aides publiques sont déduites de l\'assiette CI (Art. 244 quater B, III)</div>${emptyState('Aucune subvention.')}</div>`;
+  if(!rows.length)return `<div class="twrap" style="margin:14px 24px;"><div class="thead2"><span class="ttitle">Subventions & Aides</span>${addBtn('Subvention',"document.getElementById('add-form-subv').style.display='flex';SS.registerForDossier(_ciDossierId)",'subv')}</div>${form}<div style="padding:6px 14px;font-size:10.5px;color:var(--t40);">Les aides publiques sont déduites de l\'assiette CI (Art. 244 quater B, III)</div>${emptyState('Aucune subvention.')}</div>`;
   return `<div class="twrap" style="margin:14px 24px;">
     <div class="thead2"><span class="ttitle">Subventions & Aides Publiques</span><div style="display:flex;gap:8px;"><span class="tcount">${rows.length}</span>${addBtn('Subvention',"document.getElementById('add-form-subv').style.display='flex'",'subv')}</div></div>
     ${form}
