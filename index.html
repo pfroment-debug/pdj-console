@@ -2614,7 +2614,7 @@ function renderPilRelations(d){
     <div style="font-size:9px;font-weight:800;text-transform:uppercase;letter-spacing:.12em;color:var(--t40);margin-bottom:10px;">🔗 Pilotage lié</div>
     ${livs.length?`<div style="margin-bottom:8px;">
       <div style="font-size:10px;font-weight:700;color:#8899FF;margin-bottom:5px;">📦 Livrables (${livs.length})</div>
-      ${livs.map(l=>`<div style="padding:5px 7px;border-radius:4px;border:1px solid var(--border);margin-bottom:4px;">
+      ${livs.map(l=>`<div style="padding:5px 7px;border-radius:4px;border:1px solid var(--border);margin-bottom:4px;cursor:pointer;" onclick="_navPil('livrables','${esc(l.id||'')}')">
         <div style="display:flex;align-items:center;justify-content:space-between;margin-bottom:3px;">
           <span style="font-size:11.5px;font-weight:600;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;flex:1;">${esc(l.nom||'\u2014')}</span>
           ${l.statut?`<span class="chip chip-${l.statut==='Termin\u00e9'?'ok':l.statut==='En cours'?'gold':'muted'}" style="font-size:8px;flex-shrink:0;">${esc(l.statut)}</span>`:''}
@@ -2628,7 +2628,7 @@ function renderPilRelations(d){
     </div>`:''}
     ${reus.length?`<div>
       <div style="font-size:10px;font-weight:700;color:var(--pink);margin-bottom:5px;">📅 Réunions (${reus.length})</div>
-      ${reus.map(r=>`<div style="padding:5px 7px;border-radius:4px;border:1px solid var(--border);margin-bottom:4px;">
+      ${reus.map(r=>`<div style="padding:5px 7px;border-radius:4px;border:1px solid var(--border);margin-bottom:4px;cursor:pointer;" onclick="_navPil('reunions','${esc(r.id||'')}')">
         <div style="display:flex;align-items:center;justify-content:space-between;margin-bottom:3px;">
           <span style="font-size:11.5px;font-weight:600;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;flex:1;">${esc(r.nom||'\u2014')}</span>
           ${r.statut?`<span class="chip chip-${r.statut==='R\u00e9alis\u00e9e'?'ok':r.statut==='Planifi\u00e9e'?'blue':'muted'}" style="font-size:8px;flex-shrink:0;">${esc(r.statut)}</span>`:''}
@@ -5388,24 +5388,24 @@ function renderOverview(){
     const d=new Date(l.deadline+' ');const diff=Math.ceil((d-now)/86400000);
     const txt=diff<0?(-diff)+'j retard':diff===0?'Auj.':diff+'j';
     const col=diff<0?'#ED93B1':'#FAC775';
-    _allUrgItems.push({col,txt:esc(l.nom||l.titre||'\u2014'),detail:txt,who:esc(l.lead||'')});
+    _allUrgItems.push({col,txt:esc(l.nom||l.titre||'\u2014'),detail:txt,who:esc(l.lead||''),id:l.id||''});
   });
   Object.values(STORE.dossiers).filter(d=>!_lead||!d.lead||d.lead===_lead).forEach(d=>{
     const errs=(STORE.calcCI(d).alerts||[]).filter(a=>a.level==='err');
     if(!errs.length)return;
     const cn=STORE.clients[d.clientId]?.name||'?';
-    _allUrgItems.push({col:'#ED93B1',txt:esc(cn)+' \u2014 '+esc(d.dispositif)+' '+d.annee,detail:errs[0].code.replace(/_/g,' '),who:esc(d.lead||'')});
+    _allUrgItems.push({col:'#ED93B1',txt:esc(cn)+' \u2014 '+esc(d.dispositif)+' '+d.annee,detail:errs[0].code.replace(/_/g,' '),who:esc(d.lead||''),typ:'dos',cId:d.clientId,dosId:d.id});
   });
 
   const _urgBand=_allUrgItems.length
     ?'<div class="ov-urgbar">'
       +'<div class="ov-urgtag">'+_allUrgItems.length+' urgence'+(_allUrgItems.length>1?'s':'')+'</div>'
       +'<div class="ov-urglist">'
-      +_allUrgItems.slice(0,5).map(u=>'<div class="ov-urgitem">'
+      +_allUrgItems.slice(0,5).map(u=>{const _oc=u.typ==='dos'?`_navDossier('${u.cId}','${u.dosId}')`:`_navPil('livrables','${u.id||''}')`;return '<div class="ov-urgitem" style="cursor:pointer;" onclick="'+_oc+'">'
         +'<div class="ov-urgdot" style="background:'+u.col+'"></div>'
         +'<span class="ov-urgtxt">'+u.txt+'&nbsp;<span style="color:'+u.col+';font-weight:700;">'+u.detail+'</span></span>'
         +(u.who?'<span class="ov-urgwho">'+u.who+'</span>':'')
-        +'</div>').join('')
+        +'</div>';}).join('')
       +'</div>'
       +'<button onclick="nav(\'pilotage\')" style="margin-left:auto;padding:2px 9px;border-radius:99px;border:0.5px solid rgba(212,83,126,.3);background:rgba(212,83,126,.08);color:#ED93B1;font-family:var(--font);font-size:9px;cursor:pointer;font-weight:700;flex-shrink:0;">Voir \u2192</button>'
     +'</div>':''
@@ -5417,12 +5417,12 @@ function renderOverview(){
   lv.filter(l=>l.deadline&&l.statut!=='Termin\u00e9'&&l.statut!=='Annul\u00e9').forEach(l=>{
     const d=new Date(l.deadline+' ');if(isNaN(d))return;
     const ws2=new Date(_ws);ws2.setHours(0,0,0,0);const we2=new Date(ws2);we2.setDate(we2.getDate()+7);
-    if(d>=ws2&&d<we2){const k=l.deadline.slice(0,10);if(!_wi[k])_wi[k]=[];_wi[k].push({t:'lv',n:l.nom||l.titre||'\u2014'});}
+    if(d>=ws2&&d<we2){const k=l.deadline.slice(0,10);if(!_wi[k])_wi[k]=[];_wi[k].push({t:'lv',n:l.nom||l.titre||'\u2014',id:l.id||''});}
   });
   ru.filter(r=>r.date&&r.statut!=='R\u00e9alis\u00e9e'&&r.statut!=='Annul\u00e9e').forEach(r=>{
     const d=new Date(r.date+' ');if(isNaN(d))return;
     const ws2=new Date(_ws);ws2.setHours(0,0,0,0);const we2=new Date(ws2);we2.setDate(we2.getDate()+7);
-    if(d>=ws2&&d<we2){const k=r.date.slice(0,10);if(!_wi[k])_wi[k]=[];_wi[k].push({t:'re',n:r.nom||r.titre||'\u2014'});}
+    if(d>=ws2&&d<we2){const k=r.date.slice(0,10);if(!_wi[k])_wi[k]=[];_wi[k].push({t:'re',n:r.nom||r.titre||'\u2014',id:r.id||''});}
   });
   const _todS=today.toISOString().slice(0,10);
   const _weCols=_DAYS.map((dl,i)=>{
@@ -5431,7 +5431,7 @@ function renderOverview(){
     const isT=iso===_todS;
     const its=_wi[iso]||[];
     return '<div class="ov-wd"><div class="ov-wdl'+(isT?' tod':'')+'">'+(dl)+'</div>'
-      +its.slice(0,3).map(it=>'<div class="ov-we '+it.t+'" title="'+esc(it.n)+'">'+esc(it.n.slice(0,14))+'</div>').join('')
+      +its.slice(0,3).map(it=>'<div class="ov-we '+it.t+'" title="'+esc(it.n)+'" style="cursor:pointer;" onclick="_navPil(\''+(it.t==='lv'?'livrables':'reunions')+'\',\''+esc(it.id)+'\');">'+esc(it.n.slice(0,14))+'</div>').join('')
       +'</div>';
   }).join('');
   const _weDates=_ws.toLocaleDateString('fr-FR',{day:'2-digit',month:'short'})+'\u2013'+new Date(_ws.getTime()+6*86400000).toLocaleDateString('fr-FR',{day:'2-digit',month:'short'});
@@ -5474,12 +5474,12 @@ function renderOverview(){
     const cn=STORE.clients[d.clientId]?.name||'?';
     alts.slice(0,2).forEach(a=>{
       const col=a.level==='err'?'#ED93B1':a.level==='warn'?'#FAC775':'#88aaff';
-      _artItems.push({cn:esc(cn),col,msg:esc(a.msg.slice(0,55)),who:esc(d.lead||'')});
+      _artItems.push({cn:esc(cn),col,msg:esc(a.msg.slice(0,55)),who:esc(d.lead||''),dosId:esc(d.id),cId:esc(d.clientId)});
     });
   });
   const _alertsPanel='<div class="ov-panel">'
     +'<div class="ov-ph">Alertes r\u00e9gl. <span class="sub">Art. 244 quater B</span></div>'
-    +(_artItems.slice(0,5).length?_artItems.slice(0,5).map(a=>'<div class="ov-alrt">'
+    +(_artItems.slice(0,5).length?_artItems.slice(0,5).map(a=>'<div class="ov-alrt" style="cursor:pointer;" onclick="_navDossier(\''+a.cId+'\',\''+a.dosId+'\')">'
       +'<div class="ov-adot" style="background:'+a.col+'"></div>'
       +'<div class="ov-atxt"><span style="color:'+a.col+';font-weight:700;">'+a.cn+'</span> \u2014 '+a.msg+'</div>'
       +(a.who?'<div class="ov-awho">'+a.who+'</div>':'')
@@ -8477,6 +8477,20 @@ function _setCaMode(mode){
   STORE.cockpit._caMode=mode;
   try{localStorage.setItem('pdj_cockpit',JSON.stringify(STORE.cockpit));}catch(e){}
   if(_curPanel==='overview')renderOverview();
+}
+
+function _navPil(col, itemId){
+  const items=STORE.notion[col]||[];
+  const idx=items.findIndex(it=>it.id===itemId||it.url?.includes(itemId));
+  nav('pilotage');
+  setTimeout(()=>{
+    PIL.setTab(col);
+    if(idx>=0)setTimeout(()=>PIL.toggleDetail(col,idx),100);
+  },80);
+}
+function _navDossier(clientId, dosId){
+  nav('ci');
+  setTimeout(()=>ciNav('dossier',clientId,dosId),80);
 }
 
 // Initial render
