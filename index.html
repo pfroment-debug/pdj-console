@@ -476,12 +476,9 @@ input[list]::-webkit-calendar-picker-indicator{opacity:.3;filter:invert(1);}
 .dos-sub{font-size:10.5px;color:var(--t40);}
 
 /* Dossier view */
-/* Dossier CI - layout M maquette: calcul gauche fixe, onglets droite */
-.dos-view{display:flex;flex-direction:column;height:100%;overflow:hidden;}
-.dos-body{display:flex;flex:1;overflow:hidden;}
-.dos-left{width:248px;flex-shrink:0;border-right:1px solid var(--border);background:rgba(0,0,0,.18);overflow-y:auto;padding:14px;}
-.dos-main{flex:1;overflow-y:auto;padding:0 0 14px;}
-.dos-right{width:248px;flex-shrink:0;border-right:1px solid var(--border);background:rgba(0,0,0,.18);overflow-y:auto;padding:14px;}
+.dos-view{display:flex;height:100%;overflow:hidden;}
+.dos-main{flex:1;overflow-y:auto;}
+.dos-right{width:320px;flex-shrink:0;border-left:1px solid var(--border);background:rgba(0,0,0,.18);overflow-y:auto;padding:16px;}
 .breadcrumb{display:flex;align-items:center;gap:6px;font-size:11.5px;color:var(--t40);padding:16px 24px 0;}
 .bc-link{cursor:pointer;transition:color .12s;font-weight:600;}.bc-link:hover{color:var(--green);}
 .bc-sep{color:var(--border2);}
@@ -2499,53 +2496,55 @@ function renderDossierView(container){
     ...(d.prestations||[]),...(d.subventions||[])
   ].some(r=>r._syncError);
   container.innerHTML=`<div class="dos-view">
-    <div class="breadcrumb" style="padding:10px 16px 0;">
-      <span class="bc-link" onclick="ciNav('portfolio')">Portefeuille</span>
-      <span class="bc-sep">\u203a</span>
-      <span class="bc-link" onclick="ciNav('client','${esc(d.clientId)}')">${esc(c?.name||d.clientId)}</span>
-      <span class="bc-sep">\u203a</span>
-      <span>${d.dispositif} ${d.annee}</span>
-    </div>
-    <div class="dos-title-bar">
-      <div class="dos-title">${d.dispositif} ${d.annee}</div>
-      ${_hasLineSyncErr?'<span class="chip chip-pink" style="font-size:8.5px;" title="Des lignes ont des erreurs de sync">\u26a0 Erreur sync</span>':''}
-      <span class="chip ${d.validation?'chip-ok':'chip-gold'}">${d.validation?'Valid\u00e9':'En cours'}</span>
-      ${d.notionPageId?`<a href="https://www.notion.so/${d.notionPageId.replace(/-/g,'')}" target="_blank" class="chip" style="background:rgba(24,0,255,.15);color:#8899FF;font-size:8.5px;text-decoration:none;" title="Ouvrir dans Notion">\u2197 Notion</a>`:''}
-      ${d.lead?`<span class='chip' style='background:${{Paul:'rgba(55,138,221,.2)',Guillaume:'rgba(83,74,183,.2)',Axel:'rgba(0,255,156,.12)',Lucile:'rgba(249,21,117,.15)'}[d.lead]||'var(--t08)'};color:${{Paul:'#378ADD',Guillaume:'#8877EE',Axel:'var(--green)',Lucile:'var(--pink)'}[d.lead]||'var(--t60)'};cursor:pointer;' onclick='dosEditLead("${esc(d.id)}")'>\uD83D\uDC64 ${esc(d.lead)}</span>`:`<button class='btn btn-ghost btn-sm' style='font-size:9px;padding:2px 8px;' onclick='dosEditLead("${esc(d.id)}")'>+ Lead</button>`}
-      <select style="background:transparent;border:1px solid ${(d.priorite||'Moyenne')==='Haute'?'rgba(249,21,117,.4)':( d.priorite||'Moyenne')==='Basse'?'rgba(255,255,255,.12)':'rgba(255,215,0,.3)'};color:${(d.priorite||'Moyenne')==='Haute'?'var(--pink)':( d.priorite||'Moyenne')==='Basse'?'var(--t40)':'var(--gold)'};border-radius:99px;padding:2px 10px;font-family:var(--font);font-size:9.5px;font-weight:800;outline:none;cursor:pointer;text-transform:uppercase;letter-spacing:.05em;"
-        onchange="STORE.updateDossier('${esc(d.id)}','priorite',this.value);tabRefresh()">
-        ${['Haute','Moyenne','Basse'].map(p=>`<option value="${p}" style="background:var(--navy-card);color:#fff;" ${(d.priorite||'Moyenne')===p?'selected':''  }>${p}</option>`).join('')}
-      </select>
-      ${d.statut_jei?'<span class="chip chip-pink">JEI</span>':''}
-      ${d.entreprise_nouvelle?'<span class="chip chip-blue">1\u00e8re d\u00e9c.</span>':''}
-      ${(()=>{
-          const ciA=STORE.calcCI(d);const autoAlerts=(ciA.alerts||[]).map(a=>a.code);
+    <div class="dos-main">
+      <div class="breadcrumb">
+        <span class="bc-link" onclick="ciNav('portfolio')">Portefeuille</span>
+        <span class="bc-sep">\u203a</span>
+        <span class="bc-link" onclick="ciNav('client','${esc(d.clientId)}')">${esc(c?.name||d.clientId)}</span>
+        <span class="bc-sep">\u203a</span>
+        <span>${d.dispositif} ${d.annee}</span>
+      </div>
+      <div class="dos-title-bar">
+        <div class="dos-title">${d.dispositif} ${d.annee}</div>
+        ${_hasLineSyncErr?'<span class="chip chip-pink" style="font-size:8.5px;" title="Des lignes ont des erreurs de sync">\u26a0 Erreur sync</span>':''}
+        <span class="chip ${d.validation?'chip-ok':'chip-gold'}">${d.validation?'Valid\u00e9':'En cours'}</span>
+        ${d.notionPageId?`<a href="https://www.notion.so/${d.notionPageId.replace(/-/g,'')}" target="_blank" class="chip" style="background:rgba(24,0,255,.15);color:#8899FF;font-size:8.5px;text-decoration:none;" title="Ouvrir dans Notion">\u2197 Notion</a>`:''}
+        ${d.lead?`<span class='chip' style='background:${{Paul:'rgba(55,138,221,.2)',Guillaume:'rgba(83,74,183,.2)',Axel:'rgba(0,255,156,.12)',Lucile:'rgba(249,21,117,.15)'}[d.lead]||'var(--t08)'};color:${{Paul:'#378ADD',Guillaume:'#8877EE',Axel:'var(--green)',Lucile:'var(--pink)'}[d.lead]||'var(--t60)'};cursor:pointer;' onclick='dosEditLead("${esc(d.id)}")'>\uD83D\uDC64 ${esc(d.lead)}</span>`:`<button class='btn btn-ghost btn-sm' style='font-size:9px;padding:2px 8px;' onclick='dosEditLead("${esc(d.id)}")'>+ Lead</button>`}
+        <select style="background:transparent;border:1px solid ${(d.priorite||'Moyenne')==='Haute'?'rgba(249,21,117,.4)':(d.priorite||'Moyenne')==='Basse'?'rgba(255,255,255,.12)':'rgba(255,215,0,.3)'};color:${(d.priorite||'Moyenne')==='Haute'?'var(--pink)':(d.priorite||'Moyenne')==='Basse'?'var(--t40)':'var(--gold)'};border-radius:99px;padding:2px 10px;font-family:var(--font);font-size:9.5px;font-weight:800;outline:none;cursor:pointer;text-transform:uppercase;letter-spacing:.05em;"
+          onchange="STORE.updateDossier('${esc(d.id)}','priorite',this.value);tabRefresh()">
+          ${['Haute','Moyenne','Basse'].map(p=>`<option value="${p}" style="background:var(--navy-card);color:#fff;" ${(d.priorite||'Moyenne')===p?'selected':''}>${p}</option>`).join('')}
+        </select>
+        ${d.statut_jei?'<span class="chip chip-pink">JEI</span>':''}
+        ${d.entreprise_nouvelle?'<span class="chip chip-blue">1\u00e8re d\u00e9c.</span>':''}
+        ${(()=>{
+          const ciA=STORE.calcCI(d);
+          const autoAlerts=(ciA.alerts||[]).map(a=>a.code);
           const manualAlerts=[].concat(d.alertes_reglementaires||[]);
           const allAlerts=[...new Set([...autoAlerts,...manualAlerts])];
           if(!allAlerts.length) return '';
-          const colorMap={CII_PLAFOND:'chip-gold',CIR_SEUIL_100M:'chip-blue',NO_PERSONNEL:'chip-pink',PERSONNEL_SANS_DIPLOME:'chip-gold',CONTRAT_NON_ELIGIBLE:'chip-pink',PRESTATION_SANS_AGREMENT:'chip-gold',PRESTA_PLAFOND:'chip-gold',CI_NUL:'chip-muted',JEI_REMBOURSEMENT:'chip-ok',ENT_NOUVELLE:'chip-blue'};
+          const colorMap={CII_PLAFOND:'chip-gold',CIR_SEUIL_100M:'chip-blue',NO_PERSONNEL:'chip-pink',
+            PERSONNEL_SANS_DIPLOME:'chip-gold',CONTRAT_NON_ELIGIBLE:'chip-pink',PRESTATION_SANS_AGREMENT:'chip-gold',
+            PRESTA_PLAFOND:'chip-gold',CI_NUL:'chip-muted',JEI_REMBOURSEMENT:'chip-ok',ENT_NOUVELLE:'chip-blue'};
           return allAlerts.map(code=>`<span class="chip ${colorMap[code]||'chip-muted'}" style="font-size:8.5px;" title="${esc(code)}">\u26a0 ${esc(code.replace(/_/g,' '))}</span>`).join('');
         })()}
-      <div style="margin-left:auto;display:flex;gap:8px;">
-        <button class="btn btn-${d.validation?'ghost':'green'} btn-sm" onclick="STORE.updateDossier('${esc(d.id)}','validation',${!d.validation});renderDossierView(document.getElementById('ci-content'));">
-          ${d.validation?'\u21a9 En cours':'\u2713 Valider'}
-        </button>
-        <button class="btn btn-blue btn-sm" style="font-size:10px;" onclick="ciSyncDossier('${esc(d.id)}')" title="Forcer la synchronisation">
-          \u21c4 Sync
-        </button>
-        <button class="btn btn-danger btn-sm" onclick="_confirmBox('Supprimer ce dossier ?',()=>{STORE.removeDossier('${esc(d.id)}');ciNav('client','${esc(d.clientId)}');;})">\uD83D\uDDD1</button>
-      </div>
-    </div>
-    <div class="dos-body">
-      <div class="dos-left">${renderCalcPanel(d,ci)}</div>
-      <div class="dos-main">
-        <div class="dtabs" style="padding:0 16px;">
-          ${tabs.map(t=>`<div class="dtab ${_ciTab===t.id?'active':''}" onclick="_ciTab='${t.id}';renderDossierView(document.getElementById('ci-content'))">${t.l}</div>`).join('')}
+        <div style="margin-left:auto;display:flex;gap:8px;">
+          <button class="btn btn-${d.validation?'ghost':'green'} btn-sm" onclick="STORE.updateDossier('${esc(d.id)}','validation',${!d.validation});renderDossierView(document.getElementById('ci-content'));">
+            ${d.validation?'\u21a9 En cours':'\u2713 Valider'}
+          </button>
+          <button class="btn btn-blue btn-sm" style="font-size:10px;"
+            onclick="ciSyncDossier('${esc(d.id)}')" title="Forcer la synchronisation de ce dossier vers Notion">
+            \u21c4 Sync Notion
+          </button>
+          <button class="btn btn-danger btn-sm" onclick="_confirmBox('Supprimer ce dossier ?',()=>{STORE.removeDossier('${esc(d.id)}');ciNav('client','${esc(d.clientId)}');;})">\uD83D\uDDD1</button>
         </div>
-        <div id="ci-tab-body" style="padding:0 16px;">${renderTab(d)}</div>
-        <div style="margin:12px 16px 0;border-top:0.5px solid rgba(255,255,255,.07);padding-top:10px;">${renderPilRelations(d)}</div>
       </div>
-    </div>`;
+      <div class="dtabs">
+        ${tabs.map(t=>`<div class="dtab ${_ciTab===t.id?'active':''}" onclick="_ciTab='${t.id}';renderDossierView(document.getElementById('ci-content'))">${t.l}</div>`).join('')}
+      </div>
+      <div id="ci-tab-body">${renderTab(d)}</div>
+    </div>
+    <div class="dos-right">${renderCalcPanel(d,ci)}${renderPilRelations(d)}</div>
+  </div>`;
   // Activer les boutons de form + SS apres render
   _bindFormBtns(_ciDossierId);
   SS.clear();
@@ -6007,14 +6006,8 @@ const PIL = {
     const t=this.state.tab;
     if(t==='dashboard')return this._dashboard();
     // Livrables et reunions : liste + mini-calendrier cote a cote (maquette Pilotage)
-    if(t==='livrables')return this._leadBar()+`<div style="display:grid;grid-template-columns:1fr 252px;gap:0;height:calc(100% - 2px);">`
-      +`<div style="overflow-y:auto;border-right:0.5px solid rgba(255,255,255,.07);">` +this._list('livrables','Livrables',this._livFields())+`</div>`
-      +`<div style="overflow-y:auto;padding:0 4px;">` +this._calendar()+`</div>`
-      +`</div>`;
-    if(t==='reunions') return this._leadBar()+`<div style="display:grid;grid-template-columns:1fr 252px;gap:0;">`
-      +`<div style="overflow-y:auto;border-right:0.5px solid rgba(255,255,255,.07);">` +this._list('reunions','Réunions',this._reuFields())+`</div>`
-      +`<div style="overflow-y:auto;padding:0 4px;">` +this._calendar()+`</div>`
-      +`</div>`;
+    if(t==='livrables')return this._leadBar()+this._listWithSections('livrables','Livrables',this._livFields(),'deadline');
+    if(t==='reunions') return this._leadBar()+this._listWithSections('reunions','Réunions',this._reuFields(),'date');
     if(t==='pipeline') return this._pipeline();
     if(t==='factures') return this._list('factures','Factures',this._facFields());
     if(t==='calendrier') return this._calendar();
@@ -6671,14 +6664,93 @@ const PIL = {
     const _dl=this.state.filterLead||'';
     const lv=(STORE.notion.livrables||[]).filter(l=>_itemMatchesLead(l,_dl));
     const ru=(STORE.notion.reunions||[]).filter(r=>_itemMatchesLead(r,_dl));
+    const dos=Object.values(STORE.dossiers).filter(d=>!_dl||!d.lead||d.lead===_dl);
     const now=Date.now();
-    const urgent=lv.filter(l=>l.deadline&&new Date(l.deadline+' ')-now<7*86400000&&l.statut!=='Terminé'&&l.statut!=='Annulé');
-    const urgentReu=ru.filter(r=>r.date&&new Date(r.date+' ')-now<7*86400000&&r.statut!=='Réalisée'&&r.statut!=='Annulée');
-    const _allDos=Object.values(STORE.dossiers).filter(d=>!_dl||!d.lead||d.lead===_dl);
-    const urgentDos=_allDos.filter(d=>{
-      if(d.priorite==='Haute') return true;
-      return (STORE.calcCI(d).alerts||[]).some(a=>a.level==='err');
-    }).slice(0,5);
+    const _ws=(()=>{const d=new Date();d.setHours(0,0,0,0);d.setDate(d.getDate()-(d.getDay()+6)%7);return d.getTime();})();
+    const _we=_ws+7*86400000;
+
+    // Tri actif (persisté dans state)
+    const _sortLv=this.state._sortLv||'deadline';
+    const _sortRu=this.state._sortRu||'date';
+    const _sortDos=this.state._sortDos||'priorite';
+    const _showSections=this.state._showSections!==false; // true par défaut
+
+    // ── Classifiers ─────────────────────────────────────────────────────
+    const _lvTs=(l)=>l.deadline?new Date(l.deadline+' ').getTime():Infinity;
+    const _ruTs=(r)=>r.date?new Date(r.date+' ').getTime():Infinity;
+    const _dosErrCnt=(d)=>(STORE.calcCI(d).alerts||[]).filter(a=>a.level==='err').length;
+
+    const _catLv=(l)=>{
+      if(l.statut==='Terminé'||l.statut==='Annulé') return null;
+      const ts=_lvTs(l);
+      if(!l.deadline) return 'nodate';
+      if(ts<now) return 'late';
+      if(ts<_we) return 'week';
+      if(l.priorite==='Haute') return 'urgent';
+      return 'future';
+    };
+    const _catRu=(r)=>{
+      if(r.statut==='Réalisée'||r.statut==='Annulée') return null;
+      const ts=_ruTs(r);
+      if(!r.date) return 'nodate';
+      if(ts<now) return 'late';
+      if(ts<_we) return 'week';
+      if(r.priorite==='Haute') return 'urgent';
+      return 'future';
+    };
+    const _catDos=(d)=>{
+      const errs=_dosErrCnt(d);
+      if(errs>0) return 'late';
+      if(d.priorite==='Haute') return 'urgent';
+      // dossier en cours cette semaine : a un livrable dans la semaine
+      const dids=[d.id];
+      const hasSoon=(STORE.notion.livrables||[]).some(l=>{
+        if(!(l.rel_dossiers||[]).includes(d.id)) return false;
+        const ts=_lvTs(l);
+        return ts>=now&&ts<_we&&l.statut!=='Terminé';
+      });
+      if(hasSoon) return 'week';
+      if(d.validation) return 'future';
+      return 'future';
+    };
+
+    // ── Buckets ────────────────────────────────────────────────────────
+    const lvBuckets={late:[],week:[],urgent:[],future:[],nodate:[]};
+    lv.forEach(l=>{const c=_catLv(l);if(c)lvBuckets[c].push(l);});
+
+    const ruBuckets={late:[],week:[],urgent:[],future:[],nodate:[]};
+    ru.forEach(r=>{const c=_catRu(r);if(c)ruBuckets[c].push(r);});
+
+    const dosBuckets={late:[],week:[],urgent:[],future:[]};
+    dos.forEach(d=>{const c=_catDos(d);if(c)dosBuckets[c].push(d);});
+
+    // ── Fonctions de tri ──────────────────────────────────────────────
+    const _sortFnLv=(a,b)=>{
+      if(_sortLv==='deadline') return _lvTs(a)-_lvTs(b);
+      if(_sortLv==='priorite'){const o={'Haute':0,'Moyenne':1,'Basse':2};return (o[a.priorite]??1)-(o[b.priorite]??1);}
+      if(_sortLv==='lead') return (a.lead||'').localeCompare(b.lead||'');
+      if(_sortLv==='statut') return (a.statut||'').localeCompare(b.statut||'');
+      if(_sortLv==='nom') return (a.nom||a.titre||'').localeCompare(b.nom||b.titre||'');
+      return 0;
+    };
+    const _sortFnRu=(a,b)=>{
+      if(_sortRu==='date') return _ruTs(a)-_ruTs(b);
+      if(_sortRu==='priorite'){const o={'Haute':0,'Moyenne':1,'Basse':2};return (o[a.priorite]??1)-(o[b.priorite]??1);}
+      if(_sortRu==='lead') return (a.lead||'').localeCompare(b.lead||'');
+      if(_sortRu==='statut') return (a.statut||'').localeCompare(b.statut||'');
+      if(_sortRu==='nom') return (a.nom||a.titre||'').localeCompare(b.nom||b.titre||'');
+      return 0;
+    };
+    const _sortFnDos=(a,b)=>{
+      if(_sortDos==='priorite'){const o={'Haute':0,'Moyenne':1,'Basse':2};return (o[a.priorite]??1)-(o[b.priorite]??1);}
+      if(_sortDos==='alertes') return _dosErrCnt(b)-_dosErrCnt(a);
+      if(_sortDos==='ci'){const ciA=STORE.calcCI(a).montantCI||0;const ciB=STORE.calcCI(b).montantCI||0;return ciB-ciA;}
+      if(_sortDos==='client'){const nA=STORE.clients[a.clientId]?.name||'';const nB=STORE.clients[b.clientId]?.name||'';return nA.localeCompare(nB);}
+      if(_sortDos==='annee') return b.annee-a.annee;
+      return 0;
+    };
+
+    // ── Helpers rendu ─────────────────────────────────────────────────
     const _resLivCli=(l)=>{
       const _s=[].concat(l.societe||l.societes||[]);
       return _s.map(id=>Object.values(STORE.clients).find(c=>c.notionPageId===id||c.id===id)).filter(Boolean)[0]
@@ -6688,110 +6760,295 @@ const PIL = {
       const _s=[].concat(r.societe||r.societes||[]);
       return _s.map(id=>Object.values(STORE.clients).find(c=>c.notionPageId===id||c.id===id)).filter(Boolean)[0];
     };
-    const _anyU=urgent.length||urgentReu.length||urgentDos.length;
+
+    const _lvItem=(l,i)=>{
+      const ts=_lvTs(l);const diff=l.deadline?Math.ceil((ts-now)/86400000):null;
+      const cls=diff===null?'':diff<0?'pil-dl-late':diff<=7?'pil-dl-soon':'pil-dl-ok';
+      const txt=diff===null?'—':diff<0?(-diff)+'j retard':diff===0?'Auj.':diff+'j';
+      const _lc=_resLivCli(l);const _cn=_lc?esc(_lc.name):'';const _cid=_lc?.id||'';
+      const _oc=_cid?`nav('ci');setTimeout(()=>ciNav('client','${_cid}'),100)`:'';
+      const leadCol={Paul:'#378ADD',Guillaume:'#8877EE',Axel:'#00CC7A',Lucile:'#F91575'}[l.lead]||'rgba(255,255,255,.2)';
+      const prioBg=l.priorite==='Haute'?'rgba(249,21,117,.12)':l.priorite==='Basse'?'rgba(255,255,255,.04)':'rgba(255,215,0,.07)';
+      return `<div class="pil-item" style="cursor:${_cid?'pointer':'default'};margin-bottom:4px;background:${prioBg};border-radius:5px;" onclick="${_oc}">
+        ${l.lead?`<div style="width:3px;flex-shrink:0;border-radius:2px;background:${leadCol};align-self:stretch;"></div>`:''}
+        <div class="pil-item-info">
+          <div class="pil-item-title" style="font-size:10px;">${esc(l.nom||l.titre||'\u2014')}</div>
+          ${_cn?`<div style="font-size:9px;color:var(--t40);margin-top:1px;">${_cn}</div>`:''}
+          ${l.statut?`<div style="font-size:8px;color:rgba(255,255,255,.3);margin-top:1px;">${esc(l.statut)}</div>`:''}
+        </div>
+        <span class="pil-deadline ${cls}" style="flex-shrink:0;font-size:9px;">${txt}</span>
+      </div>`;
+    };
+
+    const _ruItem=(r,i)=>{
+      const ts=_ruTs(r);const diff=r.date?Math.ceil((ts-now)/86400000):null;
+      const cls=diff===null?'':diff<0?'pil-dl-late':diff<=7?'pil-dl-soon':'pil-dl-ok';
+      const txt=diff===null?'—':diff<0?(-diff)+'j retard':diff===0?'Auj.':diff+'j';
+      const _rc=_resMeetCli(r);const _rcn=_rc?esc(_rc.name):'';const _rcid=_rc?.id||'';
+      const _roc=_rcid?`nav('ci');setTimeout(()=>ciNav('client','${_rcid}'),100)`:'';
+      const leadCol={Paul:'#378ADD',Guillaume:'#8877EE',Axel:'#00CC7A',Lucile:'#F91575'}[r.lead]||'rgba(255,255,255,.2)';
+      const prioBg=r.priorite==='Haute'?'rgba(249,21,117,.12)':r.priorite==='Basse'?'rgba(255,255,255,.04)':'rgba(255,215,0,.07)';
+      return `<div class="pil-item" style="cursor:${_rcid?'pointer':'default'};margin-bottom:4px;background:${prioBg};border-radius:5px;" onclick="${_roc}">
+        ${r.lead?`<div style="width:3px;flex-shrink:0;border-radius:2px;background:${leadCol};align-self:stretch;"></div>`:''}
+        <div class="pil-item-info">
+          <div class="pil-item-title" style="font-size:10px;">${esc(r.nom||r.titre||'\u2014')}</div>
+          ${_rcn?`<div style="font-size:9px;color:var(--t40);margin-top:1px;">${_rcn}</div>`:''}
+          ${r.statut?`<div style="font-size:8px;color:rgba(255,255,255,.3);margin-top:1px;">${esc(r.statut)}</div>`:''}
+        </div>
+        <span class="pil-deadline ${cls}" style="flex-shrink:0;font-size:9px;">${txt}</span>
+      </div>`;
+    };
+
+    const _dosItem=(d)=>{
+      const ci=STORE.calcCI(d);const cn=STORE.clients[d.clientId]?.name||d.clientId;
+      const errs=(ci.alerts||[]).filter(a=>a.level==='err').length;
+      const warns=(ci.alerts||[]).filter(a=>a.level==='warn').length;
+      const leadCol={Paul:'#378ADD',Guillaume:'#8877EE',Axel:'#00CC7A',Lucile:'#F91575'}[d.lead]||'rgba(255,255,255,.2)';
+      const prioBg=d.priorite==='Haute'?'rgba(249,21,117,.12)':'rgba(255,255,255,.03)';
+      return `<div class="pil-item" style="cursor:pointer;margin-bottom:4px;background:${prioBg};border-radius:5px;" onclick="nav('ci');setTimeout(()=>ciNav('dossier','${esc(d.clientId)}','${esc(d.id)}'),100)">
+        ${d.lead?`<div style="width:3px;flex-shrink:0;border-radius:2px;background:${leadCol};align-self:stretch;"></div>`:''}
+        <div class="pil-item-info">
+          <div class="pil-item-title" style="font-size:10px;">${esc(d.dispositif)} ${d.annee}</div>
+          <div style="font-size:9px;color:var(--t40);margin-top:1px;">${esc(cn)}</div>
+          <div style="display:flex;gap:4px;margin-top:2px;">
+            ${errs?`<span style="font-size:7.5px;padding:1px 4px;border-radius:3px;background:rgba(249,21,117,.15);color:#F91575;font-weight:700;">\u26a0 ${errs} err</span>`:''}
+            ${warns?`<span style="font-size:7.5px;padding:1px 4px;border-radius:3px;background:rgba(255,215,0,.12);color:#FFD700;font-weight:700;">${warns} warn</span>`:''}
+            ${d.validation?`<span style="font-size:7.5px;padding:1px 4px;border-radius:3px;background:rgba(0,255,156,.1);color:#00FF9C;">\u2713 Valid\u00e9</span>`:''}
+            <span style="font-size:7.5px;color:var(--t40);">${EUR(Math.round(ci.montantCI||0))}</span>
+          </div>
+        </div>
+        <span class="chip ${d.priorite==='Haute'?'chip-pink':d.priorite==='Basse'?'chip-muted':'chip-gold'}" style="font-size:7.5px;flex-shrink:0;">${esc(d.priorite||'Moy.')}</span>
+      </div>`;
+    };
+
+    // ── Sélecteur de tri ─────────────────────────────────────────────
+    const _sortSel=(id,val,opts,fn)=>`<select id="${id}" style="background:rgba(255,255,255,.05);border:0.5px solid rgba(255,255,255,.12);border-radius:4px;padding:2px 6px;font-family:var(--font);font-size:8px;color:rgba(255,255,255,.55);outline:none;cursor:pointer;" onchange="${fn}(this.value)">
+      ${opts.map(([v,l])=>`<option value="${v}" ${val===v?'selected':''}>${l}</option>`).join('')}
+    </select>`;
+
+    // ── Section groupée (retard / urgents / semaine) ──────────────────
+    const _section=(label,color,bgColor,items,renderFn)=>{
+      if(!items.length) return '';
+      return `<div style="margin-bottom:8px;">
+        <div style="display:flex;align-items:center;gap:5px;margin-bottom:5px;padding:3px 5px;border-radius:4px;background:${bgColor};">
+          <div style="width:5px;height:5px;border-radius:50%;background:${color};flex-shrink:0;"></div>
+          <span style="font-size:8px;font-weight:800;text-transform:uppercase;letter-spacing:.1em;color:${color};">${label}</span>
+          <span style="font-size:8px;color:rgba(255,255,255,.25);font-weight:400;">${items.length}</span>
+        </div>
+        ${items.map(renderFn).join('')}
+      </div>`;
+    };
+
+    // ── Colonne générique ─────────────────────────────────────────────
+    const _col=(icon,title,total,sortId,sortVal,sortOpts,sortSetFn,buckets,renderFn,emptyTxt)=>{
+      const late=[...buckets.late].sort(renderFn==='lv'?_sortFnLv:renderFn==='ru'?_sortFnRu:_sortFnDos);
+      const urgent=[...buckets.urgent].sort(renderFn==='lv'?_sortFnLv:renderFn==='ru'?_sortFnRu:_sortFnDos);
+      const week=[...buckets.week].sort(renderFn==='lv'?_sortFnLv:renderFn==='ru'?_sortFnRu:_sortFnDos);
+      const future=[...buckets.future||[]].sort(renderFn==='lv'?_sortFnLv:renderFn==='ru'?_sortFnRu:_sortFnDos);
+      const itemFn=renderFn==='lv'?_lvItem:renderFn==='ru'?_ruItem:_dosItem;
+      const hasAny=late.length||urgent.length||week.length;
+      return `<div style="display:flex;flex-direction:column;gap:0;">
+        <div style="display:flex;align-items:center;gap:6px;margin-bottom:8px;padding-bottom:6px;border-bottom:0.5px solid rgba(255,255,255,.08);">
+          <span style="font-size:12px;">${icon}</span>
+          <span style="font-size:10px;font-weight:800;flex:1;">${title}</span>
+          <span style="font-size:9px;color:var(--t40);">${total}</span>
+          ${_sortSel(sortId,sortVal,sortOpts,sortSetFn)}
+        </div>
+        <div style="overflow-y:auto;max-height:420px;padding-right:2px;">
+          ${_section('En retard','#F91575','rgba(249,21,117,.06)',late,itemFn)}
+          ${_section('Urgents','#FFD700','rgba(255,215,0,.05)',urgent,itemFn)}
+          ${_section('Cette semaine','#378ADD','rgba(55,138,221,.06)',week,itemFn)}
+          ${!hasAny&&future.length?future.slice(0,5).map(itemFn).join(''):''}
+          ${!hasAny&&!future.length?`<div style="font-size:10px;color:var(--t40);padding:12px 0;text-align:center;">${emptyTxt}</div>`:''}
+        </div>
+        ${future.length&&hasAny?`<div style="font-size:9px;color:var(--t40);text-align:center;padding:5px 0;border-top:0.5px solid rgba(255,255,255,.06);margin-top:4px;">${future.length} \u00e0 venir</div>`:''}
+      </div>`;
+    };
+
+    const _lvTotal=lv.filter(l=>l.statut!=='Terminé'&&l.statut!=='Annulé').length;
+    const _ruTotal=ru.filter(r=>r.statut!=='Réalisée'&&r.statut!=='Annulée').length;
+    const _dosTotal=dos.length;
+
     return `<div>
-      <div class="kpi-row">
-        <div class="kpi-card"><div class="kpi-lbl">Livrables</div><div class="kpi-val gold">${lv.length}</div><div class="kpi-sub">${urgent.length} urgents</div></div>
-        <div class="kpi-card"><div class="kpi-lbl">Réunions</div><div class="kpi-val">${ru.length}</div><div class="kpi-sub">${urgentReu.length} urgentes</div></div>
-        <div class="kpi-card"><div class="kpi-lbl">Dossiers CI</div><div class="kpi-val green">${_dl?Object.values(STORE.dossiers).filter(d=>!d.lead||d.lead===_dl).length:Object.keys(STORE.dossiers).length}</div></div>
-        <div class="kpi-card"><div class="kpi-lbl">Clients</div><div class="kpi-val">${_dl?Object.values(STORE.clients).filter(c=>_clientMatchesLead(c.id,_dl)).length:Object.keys(STORE.clients).length}</div></div>
+      <div class="kpi-row" style="margin-bottom:12px;">
+        <div class="kpi-card"><div class="kpi-lbl">Livrables actifs</div><div class="kpi-val gold">${_lvTotal}</div><div class="kpi-sub">${lvBuckets.late.length} retard · ${lvBuckets.urgent.length} urgents · ${lvBuckets.week.length} semaine</div></div>
+        <div class="kpi-card"><div class="kpi-lbl">Réunions actives</div><div class="kpi-val">${_ruTotal}</div><div class="kpi-sub">${ruBuckets.late.length} retard · ${ruBuckets.urgent.length} urgentes · ${ruBuckets.week.length} semaine</div></div>
+        <div class="kpi-card"><div class="kpi-lbl">Dossiers CI</div><div class="kpi-val green">${_dosTotal}</div><div class="kpi-sub">${dosBuckets.late.length} alertes · ${dosBuckets.urgent.length} priorité haute</div></div>
+        <div class="kpi-card"><div class="kpi-lbl">Clients actifs</div><div class="kpi-val">${_dl?Object.values(STORE.clients).filter(c=>_clientMatchesLead(c.id,_dl)).length:Object.keys(STORE.clients).length}</div></div>
       </div>
-      ${_anyU?`<div style="display:grid;grid-template-columns:repeat(3,1fr);gap:12px;margin-bottom:16px;">
-        <div>
-          <div class="pil-section-title" style="margin-bottom:8px;">\uD83D\uDCE6 Livrables <span style="font-size:10px;color:var(--t40);font-weight:400;">(${urgent.length})</span></div>
-          ${urgent.length?urgent.map(l=>{
-            const d=new Date(l.deadline+' ');const diff=Math.ceil((d-now)/86400000);
-            const cls=diff<0?'pil-dl-late':diff<=7?'pil-dl-soon':'pil-dl-ok';
-            const txt=diff<0?(-diff)+'j tard':diff===0?"Auj.":diff+'j';
-            const _lc=_resLivCli(l);const _cn=_lc?esc(_lc.name):'';const _cid=_lc?.id||'';
-            const _oc=_cid?`nav('ci');setTimeout(()=>ciNav('client','${_cid}'),100)`:'';
-            return `<div class="pil-item" style="cursor:${_cid?'pointer':'default'};margin-bottom:4px;" onclick="${_oc}">
-              <div class="pil-item-info"><div class="pil-item-title">${esc(l.nom||l.titre||'\u2014')}</div>${_cn?`<div style="font-size:10px;color:var(--t40);margin-top:1px;">${_cn}</div>`:''}</div>
-              <span class="pil-deadline ${cls}" style="flex-shrink:0;">${txt}</span></div>`;
-          }).join('') : '<div style="font-size:11px;color:var(--t40);padding:8px 0;">\u2713 Aucun</div>'}
+
+      <div style="display:grid;grid-template-columns:repeat(3,1fr);gap:10px;min-height:200px;">
+        ${_col('\uD83D\uDCE6','Livrables',_lvTotal+'',
+          'pil-sort-lv',_sortLv,
+          [['deadline','Deadline'],['priorite','Priorité'],['lead','Lead'],['statut','Statut'],['nom','Nom']],
+          'PIL._setSortLv',lvBuckets,'lv','\u2713 Aucun livrable actif')}
+
+        ${_col('\uD83D\uDCC5','Réunions',_ruTotal+'',
+          'pil-sort-ru',_sortRu,
+          [['date','Date'],['priorite','Priorité'],['lead','Lead'],['statut','Statut'],['nom','Nom']],
+          'PIL._setSortRu',ruBuckets,'ru','\u2713 Aucune réunion active')}
+
+        ${_col('\u26A1','Dossiers CI',_dosTotal+'',
+          'pil-sort-dos',_sortDos,
+          [['priorite','Priorité'],['alertes','Alertes'],['ci','Montant CI'],['client','Client'],['annee','Année']],
+          'PIL._setSortDos',dosBuckets,'dos','\u2713 Aucun dossier actif')}
+      </div>
+
+      <div style="margin-top:14px;">
+        <div class="pil-section-title">Clients — ${_dl?'Vue '+_dl:'Vue croisée'}</div>
+        <div class="pil-list-grid">${Object.values(STORE.getActiveClients()).filter(c=>_clientMatchesLead(c.id,_dl)).slice(0,6).map(c=>{
+          const nbL=(STORE.notion.livrables||[]).filter(l=>l.societes?.includes(c.id)||l.societe===c.id).length;
+          const nbR=(STORE.notion.reunions||[]).filter(r=>r.societes?.includes(c.id)||r.societe===c.id).length;
+          const ciTot=STORE.clientDossierIds(c.id).reduce((s,did)=>s+(STORE.calcCI(STORE.dossiers[did]||{}).montantCI||0),0);
+          return `<div class="pil-item" style="cursor:pointer;" onclick="nav('ci');setTimeout(()=>ciNav('client','${esc(c.id)}'),100)">
+            <div style="width:30px;height:30px;border-radius:8px;background:var(--cream-3,#EDE8DD);color:var(--ink-60);display:flex;align-items:center;justify-content:center;font-size:13px;flex-shrink:0;">${esc(c.name.charAt(0))}</div>
+            <div class="pil-item-info"><div class="pil-item-title">${esc(c.name)}</div>
+            <div class="pil-item-sub">${nbL} livr. · ${nbR} réu.${ciTot>0?' · '+EUR(ciTot)+' CI':''}</div></div>
+            <span style="font-size:11px;color:var(--gold,#B87D2A);">→</span>
+          </div>`;}).join('')}
         </div>
-        <div>
-          <div class="pil-section-title" style="margin-bottom:8px;">\uD83D\uDCC5 Réunions <span style="font-size:10px;color:var(--t40);font-weight:400;">(${urgentReu.length})</span></div>
-          ${urgentReu.length?urgentReu.map(r=>{
-            const d=new Date(r.date+' ');const diff=Math.ceil((d-now)/86400000);
-            const cls=diff<0?'pil-dl-late':diff<=7?'pil-dl-soon':'pil-dl-ok';
-            const txt=diff<0?(-diff)+'j tard':diff===0?"Auj.":diff+'j';
-            const _rc=_resMeetCli(r);const _rcn=_rc?esc(_rc.name):'';const _rcid=_rc?.id||'';
-            const _roc=_rcid?`nav('ci');setTimeout(()=>ciNav('client','${_rcid}'),100)`:'';
-            return `<div class="pil-item" style="cursor:${_rcid?'pointer':'default'};margin-bottom:4px;" onclick="${_roc}">
-              <div class="pil-item-info"><div class="pil-item-title">${esc(r.nom||r.titre||'\u2014')}</div>${_rcn?`<div style="font-size:10px;color:var(--t40);margin-top:1px;">${_rcn}</div>`:''}</div>
-              <span class="pil-deadline ${cls}" style="flex-shrink:0;">${txt}</span></div>`;
-          }).join('') : '<div style="font-size:11px;color:var(--t40);padding:8px 0;">\u2713 Aucune</div>'}
-        </div>
-        <div>
-          <div class="pil-section-title" style="margin-bottom:8px;">\u26a1 Dossiers CI <span style="font-size:10px;color:var(--t40);font-weight:400;">(${urgentDos.length})</span></div>
-          ${urgentDos.length?urgentDos.map(d=>{
-            const ci=STORE.calcCI(d);const cn=STORE.clients[d.clientId]?.name||d.clientId;
-            const hasErr=(ci.alerts||[]).some(a=>a.level==='err');
-            return `<div class="pil-item" style="cursor:pointer;margin-bottom:4px;" onclick="nav('ci');setTimeout(()=>ciNav('dossier','${esc(d.clientId)}','${esc(d.id)}'),100)">
-              <div class="pil-item-info">
-                <div class="pil-item-title">${esc(d.dispositif)} ${d.annee}</div>
-                <div style="font-size:10px;color:var(--t40);margin-top:1px;">${esc(cn)}</div>
-              </div>
-              <span class="chip ${hasErr?'chip-pink':'chip-gold'}" style="font-size:8px;flex-shrink:0;">${hasErr?'\u26a0 alerte':esc(d.priorite||'')}</span></div>`;
-          }).join('') : '<div style="font-size:11px;color:var(--t40);padding:8px 0;">\u2713 Aucun</div>'}
-        </div>
-      </div>`:''}
-      <div class="pil-section-title">Clients — ${_dl?'Vue '+_dl:'Vue croisée'}</div>
-      <div class="pil-list-grid">${Object.values(STORE.getActiveClients()).filter(c=>_clientMatchesLead(c.id,_dl)).slice(0,6).map(c=>{
-        const nbL=(STORE.notion.livrables||[]).filter(l=>l.societes?.includes(c.id)||l.societe===c.id).length;
-        const nbR=(STORE.notion.reunions||[]).filter(r=>r.societes?.includes(c.id)||r.societe===c.id).length;
-        const ciTot=STORE.clientDossierIds(c.id).reduce((s,did)=>s+(STORE.calcCI(STORE.dossiers[did]||{}).montantCI||0),0);
-        return `<div class="pil-item" style="cursor:pointer;" onclick="nav('ci');setTimeout(()=>ciNav('client','${esc(c.id)}'),100)">
-          <div style="width:30px;height:30px;border-radius:8px;background:var(--cream-3,#EDE8DD);color:var(--ink-60);display:flex;align-items:center;justify-content:center;font-size:13px;flex-shrink:0;">${esc(c.name.charAt(0))}</div>
-          <div class="pil-item-info"><div class="pil-item-title">${esc(c.name)}</div>
-          <div class="pil-item-sub">${nbL} livr. · ${nbR} réu.${ciTot>0?' · '+EUR(ciTot)+' CI':''}</div></div>
-          <span style="font-size:11px;color:var(--gold,#B87D2A);">→</span>
-        </div>`;}).join('')}
       </div>
     </div>`;
   },
-  // ── Modals création depuis le Pilotage ──────────────────────
-  openCreateFactureModal(){
-    this._openFactureModal(null,null,(item)=>{
-      item.id='local-'+Date.now();item.nom=item.nom||'Facture';
-      if(!STORE.notion.factures)STORE.notion.factures=[];
-      STORE.notion.factures.push(item);
-      if(STORE.token&&notionAPI.proxyUrl&&notionAPI.dbIds.pil_factures){
-        notionAPI.createPage(notionAPI.dbIds.pil_factures,this._toProps('factures',item)).then(p=>{
-          if(p){item.id=p.id;item.url=p.url;toast('✓ Facture syncée dans Notion','ok');}
-          else toast('⚠ Erreur sync Notion','warn');
-        }).catch(()=>{});
-      }
-      try{localStorage.setItem('pdj_notion_factures',JSON.stringify(STORE.notion.factures));}catch(e){}
-      this.render();toast('Facture créée ✓');
-    });
-  },
 
-  openEditFactureModal(idx){
-    const item=(STORE.notion.factures||[])[idx];
-    if(!item)return;
-    this._openFactureModal(item,idx,(updated)=>{
-      const items=STORE.notion.factures||[];
-      if(items[idx])Object.assign(items[idx],updated);
-      const _fid=items[idx]?.id;
-      if(_fid&&STORE.token&&notionAPI.proxyUrl&&notionAPI.dbIds.pil_factures){
-        if(String(_fid).startsWith('local-')){
-          // Pas encore dans Notion -> creer
-          notionAPI.createPage(notionAPI.dbIds.pil_factures,this._toProps('factures',items[idx])).then(p=>{
-            if(p){items[idx].id=p.id;items[idx].url=p.url;toast('✓ Créé dans Notion','ok');}
-            else toast('⚠ Erreur sync Notion','warn');
-          }).catch(()=>{});
-        } else {
-          notionAPI.updatePage(_fid,this._toProps('factures',items[idx])).then(r=>{
-            if(r)toast('✓ Syncé dans Notion','ok');
-            else toast('⚠ Erreur sync Notion','warn');
-          }).catch(()=>{});
-        }
-      }
-      try{localStorage.setItem('pdj_notion_factures',JSON.stringify(STORE.notion.factures));}catch(e){}
-      this.render();toast('Facture mise à jour ✓');
+  _setSortLv(v){this.state._sortLv=v;this.render();},
+  _setSortRu(v){this.state._sortRu=v;this.render();},
+  _setSortDos(v){this.state._sortDos=v;this.render();},
+
+  _listWithSections(col,title,fields,dateKey){
+    const _lead=this.state.filterLead||'';
+    const _fs=this.state.filterStatut||'',_fp=this.state.filterPrio||'';
+    const _sortKey='_sort_'+col;
+    const sortVal=this.state[_sortKey]||dateKey;
+    const now=Date.now();
+    const _ws=(()=>{const d=new Date();d.setHours(0,0,0,0);d.setDate(d.getDate()-(d.getDay()+6)%7);return d.getTime();})();
+    const _we=_ws+7*86400000;
+
+    const allItems=(STORE.notion[col]||[]).filter(it=>{
+      if(!_itemMatchesLead(it,_lead))return false;
+      if(_fs&&it.statut!==_fs)return false;
+      if(_fp&&it.priorite!==_fp)return false;
+      return true;
     });
+
+    // Trier
+    const _ts=(it)=>it[dateKey]?new Date(it[dateKey]+' ').getTime():Infinity;
+    const sortFn=(a,b)=>{
+      if(sortVal===dateKey) return _ts(a)-_ts(b);
+      if(sortVal==='priorite'){const o={'Haute':0,'Moyenne':1,'Basse':2};return (o[a.priorite]??1)-(o[b.priorite]??1);}
+      if(sortVal==='lead') return (a.lead||'').localeCompare(b.lead||'');
+      if(sortVal==='statut') return (a.statut||'').localeCompare(b.statut||'');
+      if(sortVal==='nom') return (a.nom||a.titre||'').localeCompare(b.nom||b.titre||'');
+      if(sortVal==='client'){
+        const _getCn=(it)=>{
+          const _s=[].concat(it.societe||it.societes||[]);
+          const c=_s.map(id=>Object.values(STORE.clients).find(c=>c.notionPageId===id||c.id===id)).filter(Boolean)[0];
+          return c?.name||'';
+        };
+        return _getCn(a).localeCompare(_getCn(b));
+      }
+      return 0;
+    };
+
+    // Classifier
+    const isActive=(it)=>{
+      if(col==='livrables') return it.statut!=='Termin\u00e9'&&it.statut!=='Annul\u00e9';
+      if(col==='reunions') return it.statut!=='R\u00e9alis\u00e9e'&&it.statut!=='Annul\u00e9e';
+      return true;
+    };
+    const _cat=(it)=>{
+      if(!isActive(it)) return null;
+      const ts=_ts(it);
+      if(!it[dateKey]) return 'nodate';
+      if(ts<now) return 'late';
+      if(ts<_we) return 'week';
+      if(it.priorite==='Haute') return 'urgent';
+      return 'future';
+    };
+
+    const buckets={late:[],week:[],urgent:[],future:[],nodate:[]};
+    allItems.forEach(it=>{const c=_cat(it);if(c)buckets[c].push(it);});
+    Object.values(buckets).forEach(arr=>arr.sort(sortFn));
+
+    // Render item
+    const _item=(it,i,cat)=>{
+      const globalIdx=(STORE.notion[col]||[]).indexOf(it);
+      const ts=_ts(it);const diff=it[dateKey]?Math.ceil((ts-now)/86400000):null;
+      const dlCls=diff===null?'':diff<0?'pil-dl-late':diff<=7?'pil-dl-soon':'pil-dl-ok';
+      const dlTxt=diff===null?'\u2014':diff<0?(-diff)+'j retard':diff===0?'Auj.':diff+'j';
+      const leadCol={Paul:'#378ADD',Guillaume:'#8877EE',Axel:'#00CC7A',Lucile:'#F91575'}[it.lead]||null;
+      // Resolver client
+      const _s=[].concat(it.societe||it.societes||[]);
+      const _lc=_s.map(id=>Object.values(STORE.clients).find(c=>c.notionPageId===id||c.id===id)).filter(Boolean)[0]
+        ||[].concat(it.rel_dossiers||[]).map(did=>{const _d=STORE.dossiers[did];return _d?STORE.clients[_d.clientId]:null;}).filter(Boolean)[0];
+      const _cn=_lc?esc(_lc.name):'';const _cid=_lc?.id||'';
+      const _bg=cat==='late'?'rgba(249,21,117,.05)':cat==='urgent'?'rgba(255,215,0,.04)':cat==='week'?'rgba(55,138,221,.04)':'rgba(255,255,255,.02)';
+      return `<div class="pil-item" style="cursor:pointer;margin-bottom:4px;background:${_bg};border-radius:5px;align-items:center;" onclick="PIL.toggleDetail('${col}',${globalIdx})">
+        ${leadCol?`<div style="width:3px;height:32px;border-radius:2px;background:${leadCol};flex-shrink:0;"></div>`:''}
+        <div class="pil-item-info">
+          <div class="pil-item-title" style="font-size:10.5px;">${esc(it.nom||it.titre||'\u2014')}</div>
+          <div style="display:flex;gap:5px;align-items:center;margin-top:2px;flex-wrap:wrap;">
+            ${it.statut?`<span style="font-size:8px;color:rgba(255,255,255,.35);">${esc(it.statut)}</span>`:''}
+            ${_cn?`<span style="font-size:8px;color:rgba(255,255,255,.3);">\u00b7 ${_cn}</span>`:''}
+          </div>
+        </div>
+        <span class="pil-deadline ${dlCls}" style="flex-shrink:0;font-size:9px;">${dlTxt}</span>
+        <div style="display:flex;gap:3px;flex-shrink:0;margin-left:4px;" onclick="event.stopPropagation()">
+          <div class="btn-icon" onclick="PIL.startEdit('${col}',${globalIdx})">&#9998;</div>
+          <div class="btn-icon" onclick="_confirmBox('Supprimer ?',()=>{PIL.deleteItem('${col}',${globalIdx});})">&#128465;</div>
+        </div>
+      </div>`;
+    };
+
+    // Section
+    const _sect=(label,col2,items,cat)=>{
+      if(!items.length) return '';
+      const colors={late:'#F91575',urgent:'#FFD700',week:'#378ADD',future:'rgba(255,255,255,.3)',nodate:'rgba(255,255,255,.2)'};
+      const bgs={late:'rgba(249,21,117,.06)',urgent:'rgba(255,215,0,.05)',week:'rgba(55,138,221,.06)',future:'',nodate:''};
+      const icons={late:'\uD83D\uDD34',urgent:'\uD83D\uDFE1',week:'\uD83D\uDDD3',future:'\u25a1',nodate:'\u2015'};
+      const c=colors[cat]||'rgba(255,255,255,.3)';
+      const bg=bgs[cat]||'';
+      return `<div style="margin-bottom:10px;">
+        <div style="display:flex;align-items:center;gap:5px;padding:4px 6px;border-radius:4px;background:${bg};margin-bottom:5px;">
+          <span style="font-size:10px;">${icons[cat]||''}</span>
+          <span style="font-size:8px;font-weight:800;text-transform:uppercase;letter-spacing:.1em;color:${c};">${label}</span>
+          <span style="font-size:8px;background:rgba(255,255,255,.07);border-radius:99px;padding:0px 5px;color:rgba(255,255,255,.35);">${items.length}</span>
+        </div>
+        ${items.map((it,i)=>_item(it,i,cat)).join('')}
+      </div>`;
+    };
+
+    const sortOpts=col==='livrables'
+      ?[['deadline','Deadline'],['priorite','Priorit\u00e9'],['lead','Lead'],['statut','Statut'],['nom','Nom'],['client','Client']]
+      :[['date','Date'],['priorite','Priorit\u00e9'],['lead','Lead'],['statut','Statut'],['nom','Nom'],['client','Client']];
+
+    const totalActive=buckets.late.length+buckets.week.length+buckets.urgent.length+buckets.future.length+buckets.nodate.length;
+    const totalAll=allItems.length;
+
+    const _addBtn=`<button class="btn btn-green btn-sm" style="font-size:10px;" onclick="PIL.startNew('${col}')">+ Nouveau</button>`;
+
+    return `<div style="padding:0;">
+      <div style="display:flex;align-items:center;gap:8px;margin-bottom:10px;padding:10px 12px;border-bottom:0.5px solid rgba(255,255,255,.08);">
+        <span style="font-size:11px;font-weight:800;">${title}</span>
+        <span style="font-size:9px;color:rgba(255,255,255,.3);">${totalActive} actifs${totalAll!==totalActive?' / '+totalAll+' total':''}</span>
+        <div style="margin-left:auto;display:flex;align-items:center;gap:6px;">
+          <span style="font-size:8px;color:rgba(255,255,255,.3);">Tri</span>
+          <select style="background:rgba(255,255,255,.05);border:0.5px solid rgba(255,255,255,.12);border-radius:4px;padding:2px 6px;font-family:var(--font);font-size:8px;color:rgba(255,255,255,.6);outline:none;cursor:pointer;"
+            onchange="PIL.state['${_sortKey}']=this.value;PIL.render()">
+            ${sortOpts.map(([v,l])=>`<option value="${v}" ${sortVal===v?'selected':''}>${l}</option>`).join('')}
+          </select>
+          ${_addBtn}
+        </div>
+      </div>
+      <div style="padding:0 12px;">
+        ${_sect('En retard',col,buckets.late,'late')}
+        ${_sect('Urgents \u2014 priorit\u00e9 haute',col,buckets.urgent,'urgent')}
+        ${_sect('Cette semaine',col,buckets.week,'week')}
+        ${_sect('\u00c0 venir',col,buckets.future,'future')}
+        ${buckets.nodate.length?_sect('Sans date',col,buckets.nodate,'nodate'):''}
+        ${!totalActive?`<div style="padding:20px;text-align:center;color:rgba(255,255,255,.3);font-size:11px;">\u2713 Aucun \u00e9l\u00e9ment actif</div>`:''}
+      </div>
+    </div>`;
   },
 
   _openFactureModal(item,idx,onSave){
