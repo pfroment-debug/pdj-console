@@ -1158,9 +1158,7 @@ const notionAPI = {
         'Salaire brut \u20ac':P.number(row.salaire_brut||0),
         'Charges patronales oblig. \u20ac':P.number(row.charges_sociales||0),
         'Charges vol. (non d\u00e9d.) \u20ac':P.number(row.charges_vol||0),
-        'Co\u00fbt \u00e9ligible total \u20ac':P.number(base),
-        'Temps travaill\u00e9s (j)':P.number(row.tps_travailles||0),
-        'Taux journalier \u20ac/j':P.number(taux),...rel
+        'Temps travaill\u00e9s (j)':P.number(row.tps_travailles||0),...rel
       };
       if(row.periode_2025) props['P\u00e9riode 2025']=P.select(row.periode_2025);
       return props;
@@ -1169,11 +1167,8 @@ const notionAPI = {
       const titre2=(row.nom||'')+(row.projet?' \u2014 '+row.projet:'');
       const props2={
         'Nom':P.title(titre2),'Projet R&D':P.text(row.projet||''),
-        'Taux journalier \u20ac/j':P.number(row.taux||0),
         'Temps sur projet (j)':P.number(row.tps_passes||0),
-        'Temps valorisable (j)':P.number(row.tps_eligibles||0),
-        'D\u00e9penses engag\u00e9es \u20ac':P.number(row.depenses_engagees||0),
-        'D\u00e9penses valorisables \u20ac':P.number(row.depenses_valorisables||0),...rel
+        'Temps valorisable (j)':P.number(row.tps_eligibles||0),...rel
       };
       if(row.periode_2025) props2['P\u00e9riode 2025']=P.select(row.periode_2025);
       return props2;
