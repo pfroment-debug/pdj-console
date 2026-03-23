@@ -7027,7 +7027,7 @@ const PIL = {
     const totalActive=buckets.late.length+buckets.week.length+buckets.urgent.length+buckets.future.length+buckets.nodate.length;
     const totalAll=allItems.length;
 
-    const _addBtn=`<button class="btn btn-green btn-sm" style="font-size:10px;" onclick="PIL.startNew('${col}')">+ Nouveau</button>`;
+    const _addBtn=`<button class="btn btn-green btn-sm" style="font-size:10px;" onclick="PIL.openCreateModal('${col}',item=>{ if(item){(STORE.notion['${col}']||[]).push(item);PIL.render();}  })">+ Nouveau</button>`;
 
     return `<div style="padding:0;">
       <div style="display:flex;align-items:center;gap:8px;margin-bottom:10px;padding:10px 12px;border-bottom:0.5px solid rgba(255,255,255,.08);">
