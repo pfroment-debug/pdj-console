@@ -6766,10 +6766,11 @@ const PIL = {
       const cls=diff===null?'':diff<0?'pil-dl-late':diff<=7?'pil-dl-soon':'pil-dl-ok';
       const txt=diff===null?'—':diff<0?(-diff)+'j retard':diff===0?'Auj.':diff+'j';
       const _lc=_resLivCli(l);const _cn=_lc?esc(_lc.name):'';const _cid=_lc?.id||'';
-      const _oc=_cid?`nav('ci');setTimeout(()=>ciNav('client','${_cid}'),100)`:'';
+      const _livIdx=(STORE.notion.livrables||[]).indexOf(l);
+      const _oc=`PIL.openItemSheet('livrables',${_livIdx})`;
       const leadCol={Paul:'#378ADD',Guillaume:'#8877EE',Axel:'#00CC7A',Lucile:'#F91575'}[l.lead]||'rgba(255,255,255,.2)';
       const prioBg=l.priorite==='Haute'?'rgba(249,21,117,.12)':l.priorite==='Basse'?'rgba(255,255,255,.04)':'rgba(255,215,0,.07)';
-      return `<div class="pil-item" style="cursor:${_cid?'pointer':'default'};margin-bottom:4px;background:${prioBg};border-radius:5px;" onclick="${_oc}">
+      return `<div class="pil-item" style="cursor:pointer;margin-bottom:4px;background:${prioBg};border-radius:5px;" onclick="${_oc}">
         ${l.lead?`<div style="width:3px;flex-shrink:0;border-radius:2px;background:${leadCol};align-self:stretch;"></div>`:''}
         <div class="pil-item-info">
           <div class="pil-item-title" style="font-size:10px;">${esc(l.nom||l.titre||'\u2014')}</div>
@@ -6785,10 +6786,11 @@ const PIL = {
       const cls=diff===null?'':diff<0?'pil-dl-late':diff<=7?'pil-dl-soon':'pil-dl-ok';
       const txt=diff===null?'—':diff<0?(-diff)+'j retard':diff===0?'Auj.':diff+'j';
       const _rc=_resMeetCli(r);const _rcn=_rc?esc(_rc.name):'';const _rcid=_rc?.id||'';
-      const _roc=_rcid?`nav('ci');setTimeout(()=>ciNav('client','${_rcid}'),100)`:'';
+      const _ruIdx=(STORE.notion.reunions||[]).indexOf(r);
+      const _roc=`PIL.openItemSheet('reunions',${_ruIdx})`;
       const leadCol={Paul:'#378ADD',Guillaume:'#8877EE',Axel:'#00CC7A',Lucile:'#F91575'}[r.lead]||'rgba(255,255,255,.2)';
       const prioBg=r.priorite==='Haute'?'rgba(249,21,117,.12)':r.priorite==='Basse'?'rgba(255,255,255,.04)':'rgba(255,215,0,.07)';
-      return `<div class="pil-item" style="cursor:${_rcid?'pointer':'default'};margin-bottom:4px;background:${prioBg};border-radius:5px;" onclick="${_roc}">
+      return `<div class="pil-item" style="cursor:pointer;margin-bottom:4px;background:${prioBg};border-radius:5px;" onclick="${_roc}">
         ${r.lead?`<div style="width:3px;flex-shrink:0;border-radius:2px;background:${leadCol};align-self:stretch;"></div>`:''}
         <div class="pil-item-info">
           <div class="pil-item-title" style="font-size:10px;">${esc(r.nom||r.titre||'\u2014')}</div>
@@ -7121,8 +7123,10 @@ const PIL = {
               ${f.opts.map(o=>`<option value="${esc(o)}" ${(item[f.key]||'')==o?'selected':''}>${esc(o)}</option>`).join('')}
             </select>`;
             if(f.type==='date')return `<input id="psh-${f.key}" type="date" value="${esc(item[f.key]||'')}" style="width:100%;background:var(--t08);border:1px solid var(--border2);border-radius:var(--r-sm);padding:7px 10px;font-family:var(--font);font-size:12.5px;color:#fff;outline:none;">`;
-            if(f.type==='url')return `<input id="psh-${f.key}" type="url" value="${esc(item[f.key]||'')}" placeholder="https://…" style="width:100%;background:var(--t08);border:1px solid rgba(0,255,156,.2);border-radius:var(--r-sm);padding:7px 10px;font-family:var(--font);font-size:12px;color:#fff;outline:none;">`;
+           
+            if(f.type==='societe-search'){const _sids=[].concat(item[f.key]||[]);const _sn=_sids.map(id=>Object.values(STORE.clients).find(c=>c.notionPageId===id||c.id===id)?.name||'').filter(Boolean).join(', ');return '<input id="psh-'+f.key+'" type="text" value="'+esc(_sn)+'" autocomplete="off" placeholder="Rechercher\u2026"'+'  style="width:100%;background:var(--t08);border:1px solid rgba(0,255,156,.2);border-radius:var(--r-sm);padding:7px 10px;font-family:var(--font);font-size:12.5px;color:#fff;outline:none;"'+'  oninput="SS.openSoc(\'psh-'+f.key+'\')" onfocus="SS.openSoc(\'psh-'+f.key+'\')" onkeydown="SS._key(\'psh-'+f.key+'\',event)">';} if(f.type==='url')return `<input id="psh-${f.key}" type="url" value="${esc(item[f.key]||'')}" placeholder="https://…" style="width:100%;background:var(--t08);border:1px solid rgba(0,255,156,.2);border-radius:var(--r-sm);padding:7px 10px;font-family:var(--font);font-size:12px;color:#fff;outline:none;">`;
             if(f.key==='notes'||f.key==='compte_rendu')return `<textarea id="psh-${f.key}" rows="3" style="width:100%;background:var(--t08);border:1px solid var(--border2);border-radius:var(--r-sm);padding:7px 10px;font-family:var(--font);font-size:12px;color:#fff;outline:none;resize:vertical;box-sizing:border-box;">${esc(item[f.key]||'')}</textarea>`;
+            if(f.type==='societe-search'){const _sids=[].concat(item[f.key]||[]);const _sn=_sids.map(id=>Object.values(STORE.clients).find(c=>c.notionPageId===id||c.id===id)?.name||'').filter(Boolean).join(', ');return '<input id="psh-'+f.key+'" type="text" value="'+esc(_sn)+'"'+'  autocomplete="off" placeholder="Rechercher une soci\u00e9t\u00e9\u2026"'+'  style="width:100%;background:var(--t08);border:1px solid rgba(0,255,156,.2);border-radius:var(--r-sm);padding:7px 10px;font-family:var(--font);font-size:12.5px;color:#fff;outline:none;"'+'  oninput="SS.openSoc(\'psh-'+f.key+'\')"'+'  onfocus="SS.openSoc(\'psh-'+f.key+'\')"'+'  onkeydown="SS._key(\'psh-'+f.key+'\',event)">';}
             return `<input id="psh-${f.key}" type="text" value="${esc(item[f.key]||'')}" style="width:100%;background:var(--t08);border:1px solid var(--border2);border-radius:var(--r-sm);padding:7px 10px;font-family:var(--font);font-size:12.5px;color:#fff;outline:none;">`;
           })()}
         </div>`).join('')}
@@ -7152,8 +7156,11 @@ const PIL = {
     document.body.appendChild(overlay);
     overlay.addEventListener('click',e=>{if(e.target===overlay)overlay.remove();});
     overlay.addEventListener('keydown',e=>{if(e.key==='Escape')overlay.remove();});
-    // Focus premier champ
-    setTimeout(()=>overlay.querySelector('input,select,textarea')?.focus(),60);
+    // Initialiser SS pour les champs societe-search + focus premier champ
+    setTimeout(()=>{
+      SS.register('psh-societe',()=>Object.values(STORE.clients).sort((a,b)=>a.name.localeCompare(b.name)).map(c=>({label:c.name,sub:c.sector||'',notionPageId:c.notionPageId||'',data:c})));
+      overlay.querySelector('input,select,textarea')?.focus();
+    },60);
   },
 
   _saveItemSheet(col, idx){
@@ -7162,6 +7169,13 @@ const PIL = {
     const fields=this._fieldsFor(col).filter(f=>f.type!=='relations');
     const updated={};
     fields.forEach(f=>{
+      if(f.type==='relations') return;
+      if(f.type==='societe-search'){
+        // Recuperer le notionPageId via SS
+        const socId=SS.getSocId('psh-'+f.key);
+        updated[f.key]=socId?[socId]:(item[f.key]||[]);
+        return;
+      }
       const el=document.getElementById('psh-'+f.key);
       if(!el) return;
       updated[f.key]=el.value;
