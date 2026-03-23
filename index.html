@@ -6983,7 +6983,7 @@ const PIL = {
         ||[].concat(it.rel_dossiers||[]).map(did=>{const _d=STORE.dossiers[did];return _d?STORE.clients[_d.clientId]:null;}).filter(Boolean)[0];
       const _cn=_lc?esc(_lc.name):'';const _cid=_lc?.id||'';
       const _bg=cat==='late'?'rgba(249,21,117,.05)':cat==='urgent'?'rgba(255,215,0,.04)':cat==='week'?'rgba(55,138,221,.04)':'rgba(255,255,255,.02)';
-      return `<div class="pil-item" style="cursor:pointer;margin-bottom:4px;background:${_bg};border-radius:5px;align-items:center;" onclick="PIL.toggleDetail('${col}',${globalIdx})">
+      return `<div class="pil-item" style="cursor:pointer;margin-bottom:4px;background:${_bg};border-radius:5px;align-items:center;" onclick="PIL.openItemSheet('${col}',${globalIdx})">
         ${leadCol?`<div style="width:3px;height:32px;border-radius:2px;background:${leadCol};flex-shrink:0;"></div>`:''}
         <div class="pil-item-info">
           <div class="pil-item-title" style="font-size:10.5px;">${esc(it.nom||it.titre||'\u2014')}</div>
@@ -7051,7 +7051,149 @@ const PIL = {
     </div>`;
   },
 
-  _openFactureModal(item,idx,onSave){
+  openItemSheet(col, idx){
+    document.getElementById('pil-sheet-modal')?.remove();
+    const items=STORE.notion[col]||[];
+    const item=items[idx];
+    if(!item) return;
+
+    const isLiv=col==='livrables';
+    const icon=isLiv?'\uD83D\uDCE6':'\uD83D\uDCC5';
+    const title=esc(item.nom||item.titre||'\u2014');
+    const fields=this._fieldsFor(col).filter(f=>f.type!=='relations');
+    const relFields=this._fieldsFor(col).filter(f=>f.type==='relations');
+
+    // Resolver client
+    const _s=[].concat(item.societe||item.societes||[]);
+    const _lc=_s.map(id=>Object.values(STORE.clients).find(c=>c.notionPageId===id||c.id===id)).filter(Boolean)[0];
+    const clientName=_lc?esc(_lc.name):'';
+    const clientId=_lc?.id||'';
+
+    // Dossiers CI liés
+    const dosHtml=(item.rel_dossiers||[]).map(did=>{
+      const d=STORE.dossiers[did];if(!d)return '';
+      const ci=STORE.calcCI(d);const cn=STORE.clients[d.clientId]?.name||'';
+      return `<div class="pil-entry" style="cursor:pointer;" onclick="document.getElementById('pil-sheet-modal').remove();_navDossier('${esc(d.clientId)}','${esc(d.id)}')">
+        <span class="pil-n">${esc(cn)} \u2014 ${esc(d.dispositif)} ${d.annee}</span>
+        <span style="font-size:9px;color:var(--green);">${EUR(Math.round(ci.montantCI||0))} \u2192</span>
+      </div>`;
+    }).join('');
+
+    // Date/deadline hero
+    const dl=isLiv?item.deadline:item.date;
+    const dlD=dl?new Date(dl+' '):null;
+    const dlDiff=dlD&&!isNaN(dlD)?Math.ceil((dlD-Date.now())/86400000):null;
+    const dlCls=dlDiff===null?'':dlDiff<0?'pil-dl-late':dlDiff<=7?'pil-dl-soon':'pil-dl-ok';
+    const dlTxt=dlDiff===null?'':dlDiff<0?(-dlDiff)+'j de retard':dlDiff===0?'Aujourd\'hui':dlDiff===1?'Demain':dlDiff+'j restants';
+    const dlDateStr=dlD&&!isNaN(dlD)?dlD.toLocaleDateString('fr-FR',{weekday:'long',day:'numeric',month:'long',year:'numeric'}):'';
+    const leadCol={Paul:'#378ADD',Guillaume:'#8877EE',Axel:'var(--green)',Lucile:'var(--pink)'}[item.lead]||'rgba(255,255,255,.3)';
+
+    const overlay=document.createElement('div');
+    overlay.id='pil-sheet-modal';
+    overlay.style.cssText='position:fixed;inset:0;background:rgba(6,8,30,.88);backdrop-filter:blur(8px);z-index:700;display:flex;align-items:flex-start;justify-content:center;padding:24px 16px;overflow-y:auto;';
+    overlay.innerHTML=`
+    <div style="background:var(--navy-card);border:1px solid var(--border2);border-radius:var(--r-lg);width:100%;max-width:620px;box-shadow:var(--sh-lg);overflow:hidden;">
+      <!-- Header -->
+      <div style="display:flex;align-items:center;gap:10px;padding:14px 18px;border-bottom:1px solid var(--border);background:rgba(0,0,0,.25);">
+        <span style="font-size:18px;">${icon}</span>
+        <div style="flex:1;min-width:0;">
+          <div style="font-size:13px;font-weight:800;color:#fff;white-space:nowrap;overflow:hidden;text-overflow:ellipsis;">${title}</div>
+          ${clientName?`<div style="font-size:10px;color:var(--t40);margin-top:1px;">${clientName}</div>`:''}
+        </div>
+        ${item.lead?`<div style="width:22px;height:22px;border-radius:50%;background:${leadCol};display:flex;align-items:center;justify-content:center;font-size:8px;font-weight:800;color:#fff;flex-shrink:0;">${esc(item.lead.charAt(0))}</div>`:''}
+        ${dl&&dlTxt?`<span class="pil-deadline ${dlCls}" style="flex-shrink:0;">${dlTxt}</span>`:''}
+        <div class="modal-close" onclick="document.getElementById('pil-sheet-modal')?.remove()">✕</div>
+      </div>
+
+      ${dl&&dlDateStr?`
+      <div style="display:flex;align-items:center;justify-content:space-between;padding:8px 18px;background:${dlDiff<0?'rgba(192,57,43,.1)':dlDiff<=7?'rgba(184,125,42,.08)':'rgba(0,255,156,.05)'};border-bottom:1px solid ${dlDiff<0?'rgba(249,21,117,.2)':dlDiff<=7?'rgba(184,125,42,.2)':'rgba(0,255,156,.15)'};">
+        <div style="font-size:9px;color:var(--t40);font-weight:700;text-transform:uppercase;letter-spacing:.1em;">${isLiv?'Deadline':'Date'}</div>
+        <div style="font-size:12px;font-weight:700;color:${dlDiff<0?'var(--pink)':dlDiff<=7?'var(--gold)':'var(--green)'};">${dlDateStr.charAt(0).toUpperCase()+dlDateStr.slice(1)}</div>
+      </div>`:''}
+
+      <!-- Formulaire d'édition -->
+      <div style="padding:18px;display:grid;grid-template-columns:1fr 1fr;gap:12px;" id="pil-sheet-form-${idx}">
+        ${fields.map(f=>`
+        <div${f.key==='notes'||f.key==='compte_rendu'?' style="grid-column:1/-1;"':''}>
+          <div style="font-size:9px;font-weight:800;text-transform:uppercase;letter-spacing:.1em;color:var(--t40);margin-bottom:5px;">${esc(f.label)}</div>
+          ${(()=>{
+            if(f.type==='select')return `<select id="psh-${f.key}" style="width:100%;background:var(--t08);border:1px solid var(--border2);border-radius:var(--r-sm);padding:7px 10px;font-family:var(--font);font-size:12.5px;color:#fff;outline:none;">
+              ${f.opts.map(o=>`<option value="${esc(o)}" ${(item[f.key]||'')==o?'selected':''}>${esc(o)}</option>`).join('')}
+            </select>`;
+            if(f.type==='date')return `<input id="psh-${f.key}" type="date" value="${esc(item[f.key]||'')}" style="width:100%;background:var(--t08);border:1px solid var(--border2);border-radius:var(--r-sm);padding:7px 10px;font-family:var(--font);font-size:12.5px;color:#fff;outline:none;">`;
+            if(f.type==='url')return `<input id="psh-${f.key}" type="url" value="${esc(item[f.key]||'')}" placeholder="https://…" style="width:100%;background:var(--t08);border:1px solid rgba(0,255,156,.2);border-radius:var(--r-sm);padding:7px 10px;font-family:var(--font);font-size:12px;color:#fff;outline:none;">`;
+            if(f.key==='notes'||f.key==='compte_rendu')return `<textarea id="psh-${f.key}" rows="3" style="width:100%;background:var(--t08);border:1px solid var(--border2);border-radius:var(--r-sm);padding:7px 10px;font-family:var(--font);font-size:12px;color:#fff;outline:none;resize:vertical;box-sizing:border-box;">${esc(item[f.key]||'')}</textarea>`;
+            return `<input id="psh-${f.key}" type="text" value="${esc(item[f.key]||'')}" style="width:100%;background:var(--t08);border:1px solid var(--border2);border-radius:var(--r-sm);padding:7px 10px;font-family:var(--font);font-size:12.5px;color:#fff;outline:none;">`;
+          })()}
+        </div>`).join('')}
+
+        ${dosHtml?`
+        <div style="grid-column:1/-1;">
+          <div style="font-size:9px;font-weight:800;text-transform:uppercase;letter-spacing:.1em;color:var(--t40);margin-bottom:6px;">\uD83D\uDCCA Dossiers CI li\u00e9s</div>
+          <div style="background:var(--t08);border-radius:var(--r-sm);overflow:hidden;">${dosHtml}</div>
+        </div>`:''}
+
+        ${item.url?`
+        <div style="grid-column:1/-1;">
+          <a href="${esc(item.url)}" target="_blank" class="btn btn-ghost btn-sm" style="font-size:10px;">\u2197 Ouvrir dans Notion</a>
+        </div>`:''}
+
+        <div style="grid-column:1/-1;display:flex;gap:8px;padding-top:6px;border-top:1px solid rgba(255,255,255,.07);">
+          <button class="btn btn-green" style="flex:1;" onclick="PIL._saveItemSheet('${col}',${idx})">
+            \u2713 Enregistrer
+          </button>
+          ${clientId?`<button class="btn btn-blue btn-sm" style="font-size:10px;" onclick="document.getElementById('pil-sheet-modal').remove();nav('ci');setTimeout(()=>ciNav('client','${clientId}'),80);">\u2192 Fiche client CI</button>`:''}
+          <button class="btn btn-ghost btn-sm" onclick="document.getElementById('pil-sheet-modal')?.remove()">Annuler</button>
+          <button class="btn btn-ghost btn-sm" style="color:var(--pink);border-color:rgba(249,21,117,.3);" onclick="_confirmBox('Supprimer ?',()=>{PIL.deleteItem('${col}',${idx});document.getElementById('pil-sheet-modal')?.remove();})">🗑</button>
+        </div>
+      </div>
+    </div>`;
+
+    document.body.appendChild(overlay);
+    overlay.addEventListener('click',e=>{if(e.target===overlay)overlay.remove();});
+    overlay.addEventListener('keydown',e=>{if(e.key==='Escape')overlay.remove();});
+    // Focus premier champ
+    setTimeout(()=>overlay.querySelector('input,select,textarea')?.focus(),60);
+  },
+
+  _saveItemSheet(col, idx){
+    const items=STORE.notion[col]||[];
+    if(!items[idx]) return;
+    const fields=this._fieldsFor(col).filter(f=>f.type!=='relations');
+    const updated={};
+    fields.forEach(f=>{
+      const el=document.getElementById('psh-'+f.key);
+      if(!el) return;
+      updated[f.key]=el.value;
+    });
+    // Validations
+    if(col==='livrables'&&updated.statut==='Terminé'&&!updated.lien_drive){
+      toast('\u26a0 Lien Drive requis pour marquer comme Terminé','warn');return;
+    }
+    if(col==='reunions'&&updated.statut==='Réalisée'&&!updated.lien_drive_cr){
+      toast('\u26a0 Lien Drive CR requis pour marquer comme Réalisée','warn');return;
+    }
+    Object.assign(items[idx], updated);
+    STORE.notion[col]=[...items];
+    const _sid=items[idx]?.id;
+    if(_sid&&STORE.token&&notionAPI.proxyUrl&&!String(_sid).startsWith('local-')){
+      const _props=this._toProps(col,items[idx]);
+      syncIndicator.run(_sid+'_upd',()=>
+        notionAPI.updatePage(_sid,_props).then(r=>{
+          if(r) toast('\u2713 Sync\u00e9 dans Notion','ok');
+          else toast('\u26a0 Erreur sync','warn');
+          return r;
+        })
+      );
+    }
+    try{localStorage.setItem('pdj_notion_'+col,JSON.stringify(STORE.notion[col]));}catch(e){}
+    this._syncRelations(col, items[idx]);
+    document.getElementById('pil-sheet-modal')?.remove();
+    toast((items[idx].nom||items[idx].titre||'\u00c9l\u00e9ment')+' mis \u00e0 jour \u2713');
+    this.render();
+  },
+
+    _openFactureModal(item,idx,onSave){
     document.getElementById('pil-fac-modal')?.remove();
     const isNew=!item;
     const _lead=this.state.filterLead||'';
@@ -7427,7 +7569,7 @@ const PIL = {
             <div><div style="font-size:12px;font-weight:600;color:#fff;">${esc(l.nom||l.titre||'—')}</div>
               <div style="font-size:10px;color:var(--t40);margin-top:2px;">${dateStr}${l.statut?' · '+esc(l.statut):''}</div>
             </div>
-            <button class="btn btn-ghost btn-sm" style="font-size:9px;padding:2px 7px;" onclick="event.stopPropagation();PIL.setTab('livrables');setTimeout(()=>PIL.toggleDetail('livrables',${(STORE.notion.livrables||[]).findIndex(x=>x.id===lid||x.nom===lid)}),100)">Voir →</button>
+            <button class="btn btn-ghost btn-sm" style="font-size:9px;padding:2px 7px;" onclick="event.stopPropagation();PIL.openItemSheet('livrables',${(STORE.notion.livrables||[]).findIndex(x=>x.id===lid||x.nom===lid)})">Voir →</button>
           </div>`;
         }).join('')
       : '<div style="font-size:11px;color:var(--t40);padding:4px 0;">Aucun livrable lié</div>';
@@ -8482,11 +8624,12 @@ function _setCaMode(mode){
 function _navPil(col, itemId){
   const items=STORE.notion[col]||[];
   const idx=items.findIndex(it=>it.id===itemId||it.url?.includes(itemId));
-  nav('pilotage');
-  setTimeout(()=>{
-    PIL.setTab(col);
-    if(idx>=0)setTimeout(()=>PIL.toggleDetail(col,idx),100);
-  },80);
+  if(idx>=0){
+    if(_curPanel!=='pilotage'){nav('pilotage');setTimeout(()=>PIL.openItemSheet(col,idx),130);}
+    else PIL.openItemSheet(col,idx);
+  } else {
+    nav('pilotage');setTimeout(()=>PIL.setTab(col),80);
+  }
 }
 function _navDossier(clientId, dosId){
   nav('ci');
