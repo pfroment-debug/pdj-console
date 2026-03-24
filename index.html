@@ -6461,6 +6461,14 @@ const PIL = {
     this._refreshPickerDisplay(hiddenId);
   },
 
+  _toggleRelInPicker(checkbox, hiddenId){
+    const picker=checkbox.closest('[id$="-picker"]');
+    const ids=[...picker.querySelectorAll('input[type=checkbox]:checked')].map(c=>c.dataset.relId).filter(Boolean);
+    const hidden=document.getElementById(hiddenId);
+    if(hidden)hidden.value=JSON.stringify(ids);
+    const wrap=document.getElementById(hiddenId+'-wrap');
+    if(wrap){const span=wrap.querySelector('span');if(span)span.textContent=ids.length?ids.length+' s\u00e9lectionn\u00e9(s)':'';}
+  },
   _togglePicker(pickerId,hiddenId){
     const picker=document.getElementById(pickerId);if(!picker)return;
     const isOpen=picker.style.display!=='none';
@@ -7207,7 +7215,23 @@ const PIL = {
     this.render();
   },
 
-    _openFactureModal(item,idx,onSave){
+    openCreateFactureModal(){
+    this._openFactureModal(null,null,(item)=>{
+      item.id='local-'+Date.now();item.nom=item.nom||'Facture';
+      if(!STORE.notion.factures)STORE.notion.factures=[];
+      STORE.notion.factures.push(item);
+      if(STORE.token&&notionAPI.proxyUrl&&notionAPI.dbIds.pil_factures){
+        notionAPI.createPage(notionAPI.dbIds.pil_factures,this._toProps('factures',item)).then(p=>{
+          if(p){item.id=p.id;item.url=p.url;toast('\u2713 Facture sync\u00e9e dans Notion','ok');}
+          else toast('\u26a0 Erreur sync Notion','warn');
+        }).catch(()=>{});
+      }
+      try{localStorage.setItem('pdj_notion_factures',JSON.stringify(STORE.notion.factures));}catch(e){}
+      this.render();toast('Facture cr\u00e9\u00e9e \u2713');
+    });
+  },
+
+  _openFactureModal(item,idx,onSave){
     document.getElementById('pil-fac-modal')?.remove();
     const isNew=!item;
     const _lead=this.state.filterLead||'';
@@ -7345,7 +7369,7 @@ const PIL = {
 
   openCreateModal(collection, onCreated){
     document.getElementById('pil-create-modal')?.remove();
-    const fields = this._fieldsFor(collection).filter(f=>f.type!=='relations'&&f.type!=='societe-search');
+    const fields = this._fieldsFor(collection);
     if(!fields.length)return;
     const titles = {livrables:'Nouveau livrable',reunions:'Nouvelle réunion',factures:'Nouvelle facture',societes:'Nouveau client / prospect'};
     const overlay = document.createElement('div');
@@ -7362,6 +7386,8 @@ const PIL = {
           ${(()=>{
             if(f.type==='select')return `<select id="pcm-${f.key}" style="width:100%;background:var(--t08);border:1px solid var(--border2);border-radius:var(--r-sm);padding:7px 10px;font-family:var(--font);font-size:12.5px;color:#fff;outline:none;">${f.opts.map(o=>`<option value="${esc(o)}">${esc(o)}</option>`).join('')}</select>`;
             if(f.type==='date')return CalPicker.create('pcm-'+f.key+'_date','',{w:'100%'});
+            if(f.type==='societe-search')return `<input id="pcm-${f.key}" type="text" placeholder="Rechercher une soci\u00e9t\u00e9\u2026" autocomplete="off" style="width:100%;background:var(--t08);border:1px solid rgba(0,255,156,.2);border-radius:var(--r-sm);padding:7px 10px;font-family:var(--font);font-size:12.5px;color:#fff;outline:none;" oninput="SS.openSoc('pcm-${f.key}')" onfocus="SS.openSoc('pcm-${f.key}')" onkeydown="SS._key('pcm-${f.key}',event)">`;
+            if(f.type==='relations'){const _pi=f.getItems?.()??[];return '<div id="pcm-'+f.key+'-wrap" style="background:var(--t08);border:1px solid var(--border2);border-radius:var(--r-sm);padding:6px 10px;min-height:34px;cursor:pointer;" onclick="PIL._openPicker(\'pcm-'+f.key+'-picker\',\'pcm-'+f.key+'\')">'+'<span style="font-size:11px;color:var(--t40);">'+f.label+'\u2026</span>'+'<input type="hidden" id="pcm-'+f.key+'" value="[]">'+'<div id="pcm-'+f.key+'-picker" style="display:none;position:fixed;z-index:99999;background:var(--navy-card);border:1px solid var(--border2);border-radius:var(--r-sm);box-shadow:var(--sh-lg);padding:6px;max-height:180px;overflow-y:auto;min-width:280px;">'+(_pi.map(it=>'<label style="display:flex;align-items:center;gap:8px;padding:5px 8px;border-radius:4px;cursor:pointer;font-size:11.5px;color:#fff;" onmouseover="this.style.background=\'rgba(24,0,255,.12)\'" onmouseout="this.style.background=\'\'"><input type="checkbox" data-rel-id="'+esc(it.id)+'" style="accent-color:var(--green);" onchange="PIL._toggleRelInPicker(this,\'pcm-'+f.key+'\')">'+'<span>'+esc(it.label)+'</span></label>').join('')||'<div style="padding:8px;color:var(--t40);font-size:11px;">Aucun \u00e9l\u00e9ment</div>')+'</div></div>';}
             return `<input id="pcm-${f.key}" type="${f.type||'text'}" placeholder="${f.label+'…'}" style="width:100%;background:var(--t08);border:1px solid var(--border2);border-radius:var(--r-sm);padding:7px 10px;font-family:var(--font);font-size:12.5px;color:#fff;outline:none;" onfocus="this.style.borderColor='var(--blue)'" onblur="this.style.borderColor=''" onkeydown="if(event.key==='Enter'){event.preventDefault();PIL._confirmCreateModal('${collection}');}">`;
           })()}
         </div>`).join('')}
@@ -7375,7 +7401,11 @@ const PIL = {
     document.body.appendChild(overlay);
     overlay.addEventListener('click', e=>{if(e.target===overlay)overlay.remove();});
     overlay.addEventListener('keydown', e=>{if(e.key==='Escape')overlay.remove();});
-    setTimeout(()=>overlay.querySelector('input,select')?.focus(), 50);
+    setTimeout(()=>{
+      const _socFields=this._fieldsFor(collection).filter(f=>f.type==='societe-search');
+      _socFields.forEach(f=>SS.register('pcm-'+f.key,()=>Object.values(STORE.clients).sort((a,b)=>a.name.localeCompare(b.name)).map(c=>({label:c.name,sub:c.sector||'',notionPageId:c.notionPageId||'',data:c}))));
+      overlay.querySelector('input,select')?.focus();
+    }, 50);
     this._createModalCallback = onCreated;
     this._createModalCol = collection;
   },
@@ -7392,6 +7422,8 @@ const PIL = {
     const newItem = {id:'local-'+Date.now()};
     fields.forEach(f=>{
       if(f.type==='date'){newItem[f.key]=CalPicker.val('pcm-'+f.key+'_date');return;}
+      if(f.type==='societe-search'){const sid=SS.getSocId('pcm-'+f.key);if(sid)newItem[f.key]=[sid];return;}
+      if(f.type==='relations'){const el=document.getElementById('pcm-'+f.key);if(el){try{newItem[f.key]=JSON.parse(el.value||'[]');}catch{newItem[f.key]=[];}}return;}
       const el=document.getElementById('pcm-'+f.key); if(!el)return;
       newItem[f.key]=f.type==='number'?parseFloat(el.value)||0:el.value;
     });
