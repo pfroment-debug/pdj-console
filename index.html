@@ -6540,6 +6540,70 @@ const PIL = {
       PIL._addToPicker(fieldId,item.id||item.nom,item.nom||'');
     });
   },
+  _createNewSocFromModal(fieldId){
+    // Mini-modal rapide creation societe
+    document.getElementById('_soc-create-modal')?.remove();
+    const ov=document.createElement('div');
+    ov.id='_soc-create-modal';
+    ov.style.cssText='position:fixed;inset:0;z-index:800;display:flex;align-items:center;justify-content:center;background:rgba(6,8,30,.88);backdrop-filter:blur(6px);';
+    ov.innerHTML=`<div style="background:var(--navy-card);border:1px solid var(--border2);border-radius:var(--r-lg);width:100%;max-width:400px;box-shadow:var(--sh-lg);overflow:hidden;">
+      <div style="display:flex;align-items:center;justify-content:space-between;padding:12px 16px;border-bottom:1px solid var(--border);background:rgba(0,0,0,.2);">
+        <div style="font-size:12px;font-weight:800;text-transform:uppercase;letter-spacing:.05em;">\uD83C\uDFE2 Nouvelle soci\u00e9t\u00e9</div>
+        <div class="modal-close" onclick="document.getElementById('_soc-create-modal')?.remove()">\u2715</div>
+      </div>
+      <div style="padding:16px;display:flex;flex-direction:column;gap:10px;">
+        <div>
+          <div style="font-size:9px;font-weight:800;text-transform:uppercase;letter-spacing:.1em;color:var(--t40);margin-bottom:5px;">Raison sociale *</div>
+          <input id="_scm-name" type="text" placeholder="Ex: Resan SAS" class="minput" style="width:100%;font-size:13px;box-sizing:border-box;" onkeydown="if(event.key==='Enter')PIL._confirmCreateSoc('${fieldId}')">
+        </div>
+        <div style="display:grid;grid-template-columns:1fr 1fr;gap:8px;">
+          <div>
+            <div style="font-size:9px;font-weight:800;text-transform:uppercase;letter-spacing:.1em;color:var(--t40);margin-bottom:5px;">Secteur</div>
+            <input id="_scm-sector" type="text" placeholder="Agroalimentaire\u2026" class="minput" style="width:100%;box-sizing:border-box;">
+          </div>
+          <div>
+            <div style="font-size:9px;font-weight:800;text-transform:uppercase;letter-spacing:.1em;color:var(--t40);margin-bottom:5px;">Contact</div>
+            <input id="_scm-contact" type="text" placeholder="Jean Dupont" class="minput" style="width:100%;box-sizing:border-box;">
+          </div>
+        </div>
+        <div id="_scm-err" style="font-size:11px;color:var(--pink);display:none;"></div>
+        <div style="display:flex;gap:8px;">
+          <button class="btn btn-green" style="flex:1;" onclick="PIL._confirmCreateSoc('${fieldId}')">\u2713 Cr\u00e9er</button>
+          <button class="btn btn-ghost" onclick="document.getElementById('_soc-create-modal')?.remove()">Annuler</button>
+        </div>
+      </div>
+    </div>`;
+    document.body.appendChild(ov);
+    ov.addEventListener('click',e=>{if(e.target===ov)ov.remove();});
+    ov.addEventListener('keydown',e=>{if(e.key==='Escape')ov.remove();});
+    setTimeout(()=>document.getElementById('_scm-name')?.focus(),60);
+    this._socCreateTargetField=fieldId;
+  },
+
+  _confirmCreateSoc(fieldId){
+    const name=(document.getElementById('_scm-name')?.value||'').trim();
+    const errEl=document.getElementById('_scm-err');
+    if(!name){if(errEl){errEl.textContent='Raison sociale requise.';errEl.style.display='block';}return;}
+    const sector=(document.getElementById('_scm-sector')?.value||'').trim();
+    const contact=(document.getElementById('_scm-contact')?.value||'').trim();
+    const id=STORE.addClient(name,sector,contact,'');
+    if(!id){if(errEl){errEl.textContent='Erreur lors de la cr\u00e9ation.';errEl.style.display='block';}return;}
+    const c=STORE.clients[id];
+    // Sync Notion si possible
+    if(STORE.token&&notionAPI.proxyUrl&&notionAPI.dbIds.societes){
+      notionAPI.syncClient(c).catch(()=>{});
+    }
+    document.getElementById('_soc-create-modal')?.remove();
+    toast(name+' cr\u00e9\u00e9 \u2713');
+    // Injecter dans le champ cible
+    const el=document.getElementById(fieldId);
+    if(el){el.value=name;}
+    // Enregistrer dans SS pour que getSocId fonctionne
+    if(!SS._data)SS._data={};
+    SS._data[fieldId+'_selected']={notionPageId:c?.notionPageId||id,name};
+    if(typeof renderSidebar==='function')renderSidebar();
+  },
+
   _addToPicker(hiddenId,id,label){
     const hidden=document.getElementById(hiddenId);if(!hidden)return;
     try{const ids=JSON.parse(hidden.value||'[]');if(!ids.includes(id)){ids.push(id);hidden.value=JSON.stringify(ids);}}catch{}
@@ -7909,14 +7973,14 @@ const PIL = {
           </div>
         </div>
         ${isOpen?`<div style="background:rgba(0,0,0,.2);border-top:1px solid rgba(0,255,156,.1);padding:12px 16px;">
-          <div style="display:grid;grid-template-columns:1fr 1fr;gap:12px;">
+          <div style="display:grid;grid-template-columns:1fr 1fr;gap:12px;margin-bottom:12px;">
             <div>
               ${[{l:'Secteur',v:c.sector},{l:'Contact',v:c.contact},{l:'Email',v:c.email},{l:'Type mission',v:c.type_mission},{l:'Prochaine action',v:c.prochaine_action},{l:'Date action',v:c.date_prochaine_action?new Date(c.date_prochaine_action+' ').toLocaleDateString('fr-FR',{day:'2-digit',month:'long',year:'numeric'}):''}]
                 .filter(f=>f.v).map(f=>`<div style="display:flex;gap:8px;padding:4px 0;border-bottom:1px solid rgba(255,255,255,.05);font-size:11.5px;"><span style="color:var(--t40);min-width:90px;">${f.l}</span><span>${esc(f.v)}</span></div>`).join('')}
             </div>
             <div>
               ${ciTot>0?`<div style="background:rgba(0,255,156,.06);border:1px solid rgba(0,255,156,.15);border-radius:var(--r-sm);padding:10px;text-align:center;margin-bottom:8px;">
-                <div style="font-size:9px;text-transform:uppercase;letter-spacing:.15em;color:var(--t40);margin-bottom:4px;">CI calculé total</div>
+                <div style="font-size:9px;text-transform:uppercase;letter-spacing:.15em;color:var(--t40);margin-bottom:4px;">CI calcul\u00e9 total</div>
                 <div style="font-family:var(--font);font-size:20px;font-weight:800;color:var(--green);">${EUR(ciTot)}</div>
               </div>`:''}
               ${STORE.clientDossierIds(c.id).slice(0,3).map(did=>{
@@ -7928,6 +7992,48 @@ const PIL = {
                 </div>`;}).join('')}
             </div>
           </div>
+          ${(()=>{
+            const _cPid=c.notionPageId||'';
+            const _cDids=STORE.clientDossierIds(c.id);
+            // Livrables li\u00e9s \u00e0 ce client (via soci\u00e9t\u00e9 ou dossier CI)
+            const _cLv=(STORE.notion.livrables||[]).filter(l=>{
+              const _s=[].concat(l.societe||l.societes||[]);
+              if(_s.some(id=>id===_cPid||id===c.id)) return true;
+              return (l.rel_dossiers||[]).some(did=>_cDids.includes(did));
+            }).sort((a,b)=>new Date((b.deadline||'1900')+' ')-new Date((a.deadline||'1900')+' '));
+            // R\u00e9unions li\u00e9es
+            const _cReu=(STORE.notion.reunions||[]).filter(r=>{
+              const _s=[].concat(r.societe||r.societes||[]);
+              if(_s.some(id=>id===_cPid||id===c.id)) return true;
+              return (r.rel_dossiers||[]).some(did=>_cDids.includes(did));
+            }).sort((a,b)=>new Date((b.date||'1900')+' ')-new Date((a.date||'1900')+' '));
+            if(!_cLv.length&&!_cReu.length) return '';
+            const _row=(item,type)=>{
+              const _date=type==='lv'?item.deadline:item.date;
+              const _dateStr=_date?new Date(_date+' ').toLocaleDateString('fr-FR',{day:'2-digit',month:'short',year:'numeric'}):'—';
+              const _drive=type==='lv'?item.lien_drive:item.lien_drive_cr;
+              const _col=type==='lv'?'livrables':'reunions';
+              const _idx=(STORE.notion[_col]||[]).indexOf(item);
+              const _st=item.statut||'';
+              const _stCol=_st==='Termin\u00e9'||_st==='R\u00e9alis\u00e9e'?'var(--green)':_st==='En cours'||_st==='Planifi\u00e9e'?'#378ADD':'rgba(255,255,255,.35)';
+              return `<div style="display:flex;align-items:center;gap:8px;padding:5px 4px;border-bottom:0.5px solid rgba(255,255,255,.05);cursor:pointer;border-radius:3px;" onmouseover="this.style.background='rgba(255,255,255,.03)'" onmouseout="this.style.background=''" onclick="PIL.openItemSheet('${_col}',${_idx})">
+                <span style="font-size:11px;flex:1;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;" title="${esc(item.nom||item.titre||'')}">${esc(item.nom||item.titre||'\u2014')}</span>
+                <span style="font-size:9.5px;color:var(--t40);flex-shrink:0;">${_dateStr}</span>
+                ${_st?`<span style="font-size:8.5px;color:${_stCol};flex-shrink:0;">${esc(_st)}</span>`:''}
+                ${_drive?`<a href="${esc(_drive)}" target="_blank" onclick="event.stopPropagation()" title="Ouvrir dans Drive" style="font-size:9px;color:var(--green);background:rgba(0,255,156,.1);padding:1px 7px;border-radius:3px;text-decoration:none;flex-shrink:0;font-weight:700;">\uD83D\uDCC1</a>`:'<span style="font-size:8px;color:rgba(255,255,255,.15);flex-shrink:0;">Drive</span>'}
+              </div>`;
+            };
+            return `<div style="border-top:0.5px solid rgba(255,255,255,.08);padding-top:10px;">
+              ${_cLv.length?`<div style="margin-bottom:10px;">
+                <div style="font-size:8.5px;font-weight:800;text-transform:uppercase;letter-spacing:.12em;color:#8899FF;margin-bottom:6px;">\uD83D\uDCE6 Livrables (${_cLv.length})</div>
+                ${_cLv.map(l=>_row(l,'lv')).join('')}
+              </div>`:''}
+              ${_cReu.length?`<div>
+                <div style="font-size:8.5px;font-weight:800;text-transform:uppercase;letter-spacing:.12em;color:var(--pink);margin-bottom:6px;">\uD83D\uDCC5 R\u00e9unions (${_cReu.length})</div>
+                ${_cReu.map(r=>_row(r,'ru')).join('')}
+              </div>`:''}
+            </div>`;
+          })()}
         </div>`:``}
       </div>`;
     });
