@@ -980,8 +980,12 @@ const notionAPI = {
     };
     try {
       const saved = JSON.parse(localStorage.getItem('pdj_notion_dbids') || '{}');
-      const merged = {...PRESET, ...saved};
-      if(!saved.societes) localStorage.setItem('pdj_notion_dbids', JSON.stringify(merged));
+      // Fusionner : ne garder les valeurs localStorage que si non vides
+      const merged = Object.keys(PRESET).reduce((acc,k)=>{
+        acc[k]=(saved[k]&&saved[k].length>5)?saved[k]:PRESET[k]; return acc;
+      },{});
+      Object.keys(saved).forEach(k=>{if(!PRESET[k]&&saved[k])merged[k]=saved[k];});
+      localStorage.setItem('pdj_notion_dbids', JSON.stringify(merged));
       return merged;
     } catch(e) { return PRESET; }
   })(),
@@ -1311,11 +1315,17 @@ const notionAPI = {
       }
       return r;
     } else {
+      console.log('[syncRow] createPage',field,this.dbIds[dbKey],props);
       const page = await this.createPage(this.dbIds[dbKey], props);
       if (page && d[field]?.[idx]) {
         d[field][idx].notionPageId = page.id;
         STORE._saveLocal();
-        console.log('[syncRow] created',field,idx,page.id);
+        console.log('[syncRow] created OK',field,idx,page.id);
+        toast('\u2713 '+(field==='affectations'?'Affectation':'\u00c9l\u00e9ment')+' synch dans Notion','ok');
+      } else {
+        const e=this._lastError;
+        console.error('[syncRow] FAILED',field,e);
+        toast('\u26a0 Erreur Notion '+(e?e.status+' '+e.message:''),'warn');
       }
       return page;
     }
@@ -1582,7 +1592,18 @@ const syncIndicator = {
     }
   },
   run(label,fn){
-    if(!STORE.token||!notionAPI.proxyUrl) return Promise.resolve(null);
+    if(!STORE.token){
+      console.warn('[syncIndicator] Token Notion absent');
+      return Promise.resolve(null);
+    }
+    if(!notionAPI.proxyUrl){
+      if(!syncIndicator._proxyWarnedOnce){
+        syncIndicator._proxyWarnedOnce=true;
+        toast('\u26a0 Sync Notion impossible : proxy non configur\u00e9. Allez dans \u2699 > Notion > \u00c9tape 2.','warn');
+        console.warn('[syncIndicator] proxyUrl absent \u2014 sync annul\u00e9e pour:',label);
+      }
+      return Promise.resolve(null);
+    }
     // Deduplication : si meme label en attente, remplacer la fn
     const ex=this._queue.find(q=>q.label===label);
     if(ex){ex.fn=fn;return new Promise((res,rej)=>{ex.resolve=res;ex.reject=rej;});}
@@ -1603,7 +1624,11 @@ const syncIndicator = {
         setTimeout(()=>this._flush(),delay);return;
       }
       this._pending=Math.max(0,this._pending-1);
-      if(!result){this._errCount++;}
+      if(!result){
+        this._errCount++;
+        console.error('[syncIndicator] FAILED after retries:',item.label,'lastError:',notionAPI._lastError);
+        if(notionAPI._lastError)toast('\u26a0 Erreur Notion '+notionAPI._lastError.status+' \u2014 '+String(notionAPI._lastError.message||'').slice(0,50),'warn');
+      }
       else{
         const _slp=item.label.split('_');
         if(_slp.length>=3&&STORE.dossiers[_slp[0]]?.[_slp[1]]?.[parseInt(_slp[2])]){
