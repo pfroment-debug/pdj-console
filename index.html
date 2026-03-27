@@ -1956,6 +1956,7 @@ const STORE = {
     this.dossiers[did][field].push(row);
     this.emit('rows:change',{did,field}); this._saveLocal();
     const idx=this.dossiers[did][field].length-1;
+    console.log('[addRow]',field,'idx=',idx,'token=',!!STORE.token,'proxy=',!!notionAPI.proxyUrl,'dbId=',notionAPI.dbIds[field]);
     syncIndicator.run(did+'_'+field+'_'+idx,()=>notionAPI.syncRow(did,field,idx));
   },
   updateRow(did,field,index,newRow){
@@ -4050,6 +4051,12 @@ function pers_add(did){
 }
 function aff_add(did){
   const d=STORE.dossiers[did];if(!d)return;
+  // DIAGNOSTIC
+  console.log('[aff_add] did=',did,'token=',!!STORE.token,'proxy=',notionAPI.proxyUrl,'dbIds.affectations=',notionAPI.dbIds.affectations,'d.notionPageId=',d?.notionPageId);
+  if(!STORE.token){toast('\u26a0 Token Notion absent. Configurez-le dans \u2699 > Donn\u00e9es > Notion','warn');}
+  else if(!notionAPI.proxyUrl){toast('\u26a0 Proxy Notion absent. Configurez l\'URL dans \u2699 > Notion > \u00c9tape 2','warn');}
+  else if(!notionAPI.dbIds.affectations){toast('\u26a0 ID base Affectations absent. Cliquez sur \u2605 Pr\u00e9-remplir dans \u2699','warn');}
+  else if(!d.notionPageId){toast('\u26a0 Ce dossier CI n\'est pas encore sync\u00e9 dans Notion. Cliquez sur \u21c4 Sync Notion dans la barre du dossier.','warn');}
   const nom=document.getElementById('af-nom')?.value.trim();if(!nom){toast('Nom requis','warn');return;}
   const taux=parseFloat(document.getElementById('af-taux')?.value)||0;
   const tpsProj=parseFloat(document.getElementById('af-tps-proj')?.value)||0;
