@@ -1293,6 +1293,10 @@ const notionAPI = {
     const d = STORE.dossiers[did]; if (!d) return null;
     const dbKey = {personnel:'personnel',affectations:'affectations',amortissements:'amortissements',prestations:'prestations',subventions:'subventions'}[field];
     if (!dbKey || !this.dbIds[dbKey]) return null;
+    if (!this.proxyUrl) {
+      toast('\u26a0 Sync Notion impossible : proxy non configur\u00e9 (\u2699 > Notion > \u00c9tape 2)','warn');
+      return null;
+    }
     const row = d[field]?.[idx]; if (!row) return null;
     const props = this.rowProps(field, row, d.notionPageId||null);
     if (row.notionPageId) {
@@ -3307,7 +3311,7 @@ function renderPersTab(d){
   ]);
   // Formulaire CIR 2025 : tableau P1/P2 compact
   const formCIR2025 = isCIR2025 ? `
-  <div id='pers-form-2025' style='padding:12px 0;'>
+  <div id='pers-form-2025' style='display:none;padding:12px 0;'>
     <div style='display:grid;grid-template-columns:1fr 1fr;gap:8px;margin-bottom:10px;'>
       <div><label>Nom du salarié</label>
         <input id='af-p-nom' class='minput' list='pers-dl-noms' placeholder='DUPONT Jean' style='width:100%;' oninput='persCIR2025Autofill(_ciDossierId)'></div>
@@ -3388,13 +3392,13 @@ function renderPersTab(d){
     </div>
     <div style='font-size:10px;color:var(--t40);margin-top:4px;'>Sal.P1 + Sal.P2 = Salaire annuel — Taux P1 = (Sal+Ch P1) ÷ Jours P1 — Taux P2 = (Sal+Ch P2) ÷ Jours P2</div>
   ` : '';
-  if(!rows.length){const noteR=`<div class="alert alert-info" style="margin:10px 14px 0;font-size:11px;"><span>⚖</span><span><strong style="color:var(--green)">Art. 244 quater B</strong> — Cotisations obligatoires uniquement (URSSAF, retraite légale). Les charges volontaires (intéressement, mutuelle sur-oblig…) sont non déductibles.</span></div>`;return `<div class="twrap" style="margin:14px 24px;"><div class="thead2"><span class="ttitle">Personnel R&D</span>${addBtn('Personnel',"document.getElementById('add-form-pers').style.display='flex';SS.registerForDossier(_ciDossierId)",'pers')}</div>${isCIR2025?formCIR2025:form}${noteR}${emptyState('Aucun personnel déclaré.')}</div>`;}
+  if(!rows.length){const noteR=`<div class="alert alert-info" style="margin:10px 14px 0;font-size:11px;"><span>⚖</span><span><strong style="color:var(--green)">Art. 244 quater B</strong> — Cotisations obligatoires uniquement (URSSAF, retraite légale). Les charges volontaires (intéressement, mutuelle sur-oblig…) sont non déductibles.</span></div>`;return `<div class="twrap" style="margin:14px 24px;"><div class="thead2"><span class="ttitle">Personnel R&D</span>${addBtn('Personnel',isCIR2025?"document.getElementById('pers-form-2025').style.display='block';SS.registerForDossier(_ciDossierId)":"document.getElementById('add-form-pers').style.display='flex';SS.registerForDossier(_ciDossierId)",'pers')}</div>${isCIR2025?formCIR2025:form}${noteR}${emptyState('Aucun personnel déclaré.')}</div>`;}
   const noteReglementaire=`<div class="alert alert-info" style="margin:10px 14px 0;font-size:11px;">
     <span>⚖</span>
     <span><strong style="color:var(--green)">Art. 244 quater B, II-a CGI</strong> — Les charges patronales éligibles sont exclusivement les <strong>cotisations sociales obligatoires</strong> (URSSAF, retraite légale, prévoyance légale). Les charges volontaires (intéressement, participation, tickets restaurant, mutuelle sur-obligatoire, PEE…) sont <strong style="color:var(--pink)">non déductibles</strong> et doivent être isolées dans la colonne Ch. vol.</span>
   </div>`;
   return `<div class="twrap" style="margin:14px 24px;">
-    <div class="thead2"><span class="ttitle">Personnel R&D</span><div style="display:flex;gap:8px;align-items:center;"><span class="tcount">${rows.length}</span>${addBtn('Personnel',"document.getElementById('add-form-pers').style.display='flex'",'pers')}</div></div>
+    <div class="thead2"><span class="ttitle">Personnel R&D</span><div style="display:flex;gap:8px;align-items:center;"><span class="tcount">${rows.length}</span>${addBtn('Personnel',isCIR2025?"document.getElementById('pers-form-2025').style.display='block'":"document.getElementById('add-form-pers').style.display='flex'",'pers')}</div></div>
     ${isCIR2025?formCIR2025:form}
     ${noteReglementaire}
     <div class="t-scroll"><table>${`<thead><tr><th class='th-act'></th>${(isCIR2025?['Nom','Période','Catégorie','Contrat','Salaire brut €','Ch. oblig. €','Taux €/j','Jours']:['Nom','Catégorie','Contrat','Salaire brut €','Ch. patronales oblig. €','Ch. vol. €','Coût éligible total','Tps trav. (j)']).map(c=>`<th>${c}</th>`).join('')}</tr></thead>`}
