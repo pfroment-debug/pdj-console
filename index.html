@@ -1319,6 +1319,7 @@ const notionAPI = {
       const page = await this.createPage(this.dbIds[dbKey], props);
       if (page && d[field]?.[idx]) {
         d[field][idx].notionPageId = page.id;
+        delete d[field][idx]._creating;
         STORE._saveLocal();
         console.log('[syncRow] created OK',field,idx,page.id);
         toast('\u2713 '+(field==='affectations'?'Affectation':'\u00c9l\u00e9ment')+' synch dans Notion','ok');
@@ -1953,17 +1954,17 @@ const STORE = {
   addRow(did,field,row){
     if(!this.dossiers[did])return;
     if(!this.dossiers[did][field])this.dossiers[did][field]=[];
+    row._creating=true;
     this.dossiers[did][field].push(row);
     this.emit('rows:change',{did,field}); this._saveLocal();
     const idx=this.dossiers[did][field].length-1;
-    console.log('[addRow]',field,'idx=',idx,'token=',!!STORE.token,'proxy=',!!notionAPI.proxyUrl,'dbId=',notionAPI.dbIds[field]);
     syncIndicator.run(did+'_'+field+'_'+idx,()=>notionAPI.syncRow(did,field,idx));
   },
   updateRow(did,field,index,newRow){
     if(!this.dossiers[did]?.[field])return;
     this.dossiers[did][field][index]=newRow;
     this.emit('rows:change',{did,field}); this._saveLocal();
-    syncIndicator.run(did+'_'+field+'_'+index,()=>notionAPI.syncRow(did,field,index));
+    if(!this.dossiers[did]?.[field]?.[index]?._creating) syncIndicator.run(did+'_'+field+'_'+index,()=>notionAPI.syncRow(did,field,index));
   },
   removeRow(did,field,index){
     if(!this.dossiers[did]?.[field])return;
@@ -4101,6 +4102,8 @@ async function _syncAffectation(did, idx){
 }
 
 function aff_add(did){
+  if(aff_add._lock)return;
+  aff_add._lock=true;setTimeout(()=>{aff_add._lock=false;},1500);
   const d=STORE.dossiers[did];if(!d)return;
   if(!STORE.token){toast('\u26a0 Token Notion absent','warn');return;}
   if(!notionAPI.proxyUrl){toast('\u26a0 Proxy absent \u2014 \u2699 > Notion > Etape 2','warn');return;}
