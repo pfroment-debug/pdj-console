@@ -4049,44 +4049,93 @@ function pers_add(did){
   }
   renderDossierView(document.getElementById('ci-content'));toast('Personnel ajouté');
 }
+
+// Helper sync Notion direct pour une affectation
+async function _syncAffectation(did, idx){
+  const d=STORE.dossiers[did]; if(!d?.affectations?.[idx]) return;
+  const row=d.affectations[idx];
+  const token=STORE.token, proxyUrl=notionAPI.proxyUrl, dbId=notionAPI.dbIds.affectations;
+  if(!token||!proxyUrl||!dbId) return;
+
+  const P=notionAPI.P;
+  const rel=d.notionPageId?{'Dossier CI':P.relation([d.notionPageId])}:{};
+  const _nom3=(row.nom||'').split(' \u2014')[0].trim().toLowerCase();
+  const _ch=(d.personnel||[]).find(p=>p.nom&&p.nom.toLowerCase()===_nom3);
+  const chRel=_ch?.notionPageId?{'Chercheur':P.relation([_ch.notionPageId])}:{};
+
+  const props={
+    'Nom':P.title((row.nom||'')+(row.projet?' \u2014 '+row.projet:'')),
+    'Projet R&D':P.text(row.projet||''),
+    'Temps sur projet (j)':P.number(row.tps_passes||0),
+    'Temps valorisable (j)':P.number(row.tps_eligibles||0),
+    ...chRel,...rel
+  };
+  if(row.periode_2025) props['P\u00e9riode 2025']=P.select(row.periode_2025);
+
+  const baseUrl=proxyUrl.replace(/\/$/,'');
+  const headers={'Authorization':'Bearer '+token,'Content-Type':'application/json','Notion-Version':'2022-06-28'};
+  const sec=localStorage.getItem('pdj_worker_secret')||'';
+  if(sec)headers['X-PDJ-Secret']=sec;
+
+  try{
+    const pid=row.notionPageId;
+    const isNew=!pid||String(pid).startsWith('local-');
+    const url=isNew ? baseUrl+'/v1/pages' : baseUrl+'/v1/pages/'+pid;
+    const method=isNew?'POST':'PATCH';
+    const bodyObj=isNew?{parent:{database_id:dbId},properties:props}:{properties:props};
+    const res=await fetch(url,{method,headers,body:JSON.stringify(bodyObj)});
+    const body=await res.json().catch(()=>({}));
+    if(res.ok&&body.id){
+      d.affectations[idx].notionPageId=body.id;
+      STORE._saveLocal();
+      toast('\u2713 Affectation sync\u00e9e dans Notion','ok');
+    } else {
+      const msg=(body.message||body.code||res.statusText||'Erreur inconnue').slice(0,80);
+      toast('\u26a0 Notion '+res.status+' \u2014 '+msg,'warn');
+      console.error('[_syncAffectation] HTTP',res.status,body);
+    }
+  }catch(e){
+    toast('\u26a0 R\u00e9seau \u2014 '+e.message.slice(0,60),'warn');
+    console.error('[_syncAffectation] fetch error',e);
+  }
+}
+
 function aff_add(did){
   const d=STORE.dossiers[did];if(!d)return;
-  // DIAGNOSTIC
-  console.log('[aff_add] did=',did,'token=',!!STORE.token,'proxy=',notionAPI.proxyUrl,'dbIds.affectations=',notionAPI.dbIds.affectations,'d.notionPageId=',d?.notionPageId);
-  if(!STORE.token){toast('\u26a0 Token Notion absent. Configurez-le dans \u2699 > Donn\u00e9es > Notion','warn');}
-  else if(!notionAPI.proxyUrl){toast('\u26a0 Proxy Notion absent. Configurez l\'URL dans \u2699 > Notion > \u00c9tape 2','warn');}
-  else if(!notionAPI.dbIds.affectations){toast('\u26a0 ID base Affectations absent. Cliquez sur \u2605 Pr\u00e9-remplir dans \u2699','warn');}
-  else if(!d.notionPageId){toast('\u26a0 Ce dossier CI n\'est pas encore sync\u00e9 dans Notion. Cliquez sur \u21c4 Sync Notion dans la barre du dossier.','warn');}
-  const nom=document.getElementById('af-nom')?.value.trim();if(!nom){toast('Nom requis','warn');return;}
+  if(!STORE.token){toast('\u26a0 Token Notion absent','warn');return;}
+  if(!notionAPI.proxyUrl){toast('\u26a0 Proxy absent \u2014 \u2699 > Notion > Etape 2','warn');return;}
+  if(!notionAPI.dbIds.affectations){toast('\u26a0 ID base Affectations manquant \u2014 \u2605 Pre-remplir','warn');return;}
+  const nom=document.getElementById('af-nom')?.value.trim();
+  if(!nom){toast('Nom requis','warn');return;}
   const taux=parseFloat(document.getElementById('af-taux')?.value)||0;
   const tpsProj=parseFloat(document.getElementById('af-tps-proj')?.value)||0;
   const tpsVal=parseFloat(document.getElementById('af-tps-val')?.value)||tpsProj;
   const depEng=Math.round(taux*tpsProj*100)/100;
   const depVal=Math.round(taux*tpsVal*100)/100;
-  // Période 2025 : le suffixe du nom est prioritaire sur le select
   let periode2025='';
-  if(nom.includes('— P1')||nom.endsWith('-P1'))
-    periode2025='P1 — Jan→14 fév. (FF 43%)';
-  else if(nom.includes('— P2')||nom.endsWith('-P2'))
-    periode2025='P2 — 15 fév.→Déc. (FF 40%)';
-  else
-    periode2025=document.getElementById('af-aff-periode2025')?.value||'';
+  if(nom.includes('\u2014 P1')||nom.endsWith('-P1')) periode2025='P1 \u2014 Jan\u219214 f\u00e9v. (FF 43%)';
+  else if(nom.includes('\u2014 P2')||nom.endsWith('-P2')) periode2025='P2 \u2014 15 f\u00e9v.\u2192D\u00e9c. (FF 40%)';
+  else periode2025=document.getElementById('af-aff-periode2025')?.value||'';
   const _pidA=npGetPageId('aff');
   const _rowA={nom,projet:document.getElementById('af-proj')?.value||'',
     taux,tps_passes:tpsProj,tps_eligibles:tpsVal,
     depenses_engagees:depEng,depenses_valorisables:depVal,periode_2025:periode2025};
+  let _affIdx;
   if(_pidA){
     const _idx=(d.affectations||[]).findIndex(a=>a.notionPageId===_pidA);
-    if(_idx>=0) STORE.updateRow(did,'affectations',_idx,{...d.affectations[_idx],..._rowA,notionPageId:_pidA});
-    else STORE.addRow(did,'affectations',{..._rowA,notionPageId:_pidA});
+    if(_idx>=0){STORE.updateRow(did,'affectations',_idx,{...d.affectations[_idx],..._rowA,notionPageId:_pidA});_affIdx=_idx;}
+    else{STORE.addRow(did,'affectations',{..._rowA,notionPageId:_pidA});_affIdx=(d.affectations||[]).length-1;}
     npClear('aff');
   } else {
     const _eiA=(d.affectations||[]).findIndex(a=>a.nom===_rowA.nom&&a.projet===_rowA.projet);
-    if(_eiA>=0) STORE.updateRow(did,'affectations',_eiA,{...d.affectations[_eiA],..._rowA});
-    else STORE.addRow(did,'affectations',_rowA);
+    if(_eiA>=0){STORE.updateRow(did,'affectations',_eiA,{...d.affectations[_eiA],..._rowA});_affIdx=_eiA;}
+    else{STORE.addRow(did,'affectations',_rowA);_affIdx=(d.affectations||[]).length-1;}
   }
-  renderDossierView(document.getElementById('ci-content'));toast('Affectation ajoutée ✓');
+  renderDossierView(document.getElementById('ci-content'));
+  toast('Affectation enregistr\u00e9e \u2713');
+  _syncAffectation(did, _affIdx);
 }
+
 
 // Autofill taux depuis le personnel quand on choisit un nom
 function affAutofillTaux(did){
