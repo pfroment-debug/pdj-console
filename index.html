@@ -1319,7 +1319,6 @@ const notionAPI = {
       const page = await this.createPage(this.dbIds[dbKey], props);
       if (page && d[field]?.[idx]) {
         d[field][idx].notionPageId = page.id;
-        delete d[field][idx]._creating;
         STORE._saveLocal();
         console.log('[syncRow] created OK',field,idx,page.id);
         toast('\u2713 '+(field==='affectations'?'Affectation':'\u00c9l\u00e9ment')+' synch dans Notion','ok');
@@ -1954,7 +1953,6 @@ const STORE = {
   addRow(did,field,row){
     if(!this.dossiers[did])return;
     if(!this.dossiers[did][field])this.dossiers[did][field]=[];
-    row._creating=true;
     this.dossiers[did][field].push(row);
     this.emit('rows:change',{did,field}); this._saveLocal();
     const idx=this.dossiers[did][field].length-1;
@@ -1962,9 +1960,11 @@ const STORE = {
   },
   updateRow(did,field,index,newRow){
     if(!this.dossiers[did]?.[field])return;
+    // Nettoyer _creating pour eviter de le propager via spread
+    delete newRow._creating;
     this.dossiers[did][field][index]=newRow;
     this.emit('rows:change',{did,field}); this._saveLocal();
-    if(!this.dossiers[did]?.[field]?.[index]?._creating) syncIndicator.run(did+'_'+field+'_'+index,()=>notionAPI.syncRow(did,field,index));
+    syncIndicator.run(did+'_'+field+'_'+index,()=>notionAPI.syncRow(did,field,index));
   },
   removeRow(did,field,index){
     if(!this.dossiers[did]?.[field])return;
@@ -2056,7 +2056,8 @@ const STORE = {
     // ── Taux ─────────────────────────────────────────────────
     const tx = d.dispositif==='CIR'?0.30:
                d.dispositif==='CICO'?0.50:
-               d.annee<2023?0.20:0.30; // CII
+               (d.dispositif==='CII'&&d.annee>=2025)?0.20:
+               d.annee<2023?0.20:0.30; // CII : <2023=20%, 2023-2024=30%, 2025+=20%
 
     // ── Plafond CII 400 k€ ────────────────────────────────────
     let assCI, montantCI, palier_100m=false;
